@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Markov Harmonic & Legato Flow Engine v5</title>
+    <title>Markov Harmonic & Precision Flow Engine v6</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -271,7 +271,7 @@
 <body>
 
     <header>
-        <h1>MARKOV HARMONIC & LEGATO FLOW ENGINE v5</h1>
+        <h1>MARKOV HARMONIC & PRECISION FLOW ENGINE v6</h1>
         <span class="badge" id="statusBadge">Awaiting Input</span>
     </header>
 
@@ -310,14 +310,14 @@
 
             <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
 
-            <h2>3. Chord & Arpeggiator Length</h2>
+            <h2>3. Chord & Arpeggiator Settings</h2>
 
             <div class="control-row">
-                <label for="chordSustainMode">Chord Rhythm / Length</label>
+                <label for="chordSustainMode">Chord Rhythm / Style</label>
                 <select id="chordSustainMode">
                     <option value="full" selected>Sustained Whole Bars (8 Steps)</option>
                     <option value="half">Half-Bar Strums (4 Steps)</option>
-                    <option value="arp">Arpeggiated Pattern</option>
+                    <option value="arp">Arpeggiated Pattern Flow</option>
                 </select>
             </div>
 
@@ -332,38 +332,38 @@
             </div>
 
             <div class="control-row">
-                <label for="arpRing">Sustain Release Decay</label>
-                <input type="range" id="arpRing" min="50" max="300" value="200">
-                <span class="val-disp" id="ringVal">200%</span>
+                <label for="arpRing">Arp Release Decay</label>
+                <input type="range" id="arpRing" min="100" max="300" value="220">
+                <span class="val-disp" id="ringVal">220%</span>
             </div>
 
             <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
 
-            <h2>4. Musical Melody & Harmonization</h2>
+            <h2>4. Melody Harmonization & Tone</h2>
 
             <div class="control-row">
                 <label for="melodyHarmMode">Harmonization Voice</label>
                 <select id="melodyHarmMode">
                     <option value="mono">Single Lead (Monophonic)</option>
-                    <option value="smart3rd" selected>Smart Chord-3rd (Consonant)</option>
-                    <option value="smart5th">Smart Chord-5th (Power Lead)</option>
+                    <option value="chordTone3rd" selected>In-Key Chord 3rd</option>
+                    <option value="chordTone5th">In-Key Chord 5th</option>
                     <option value="octave">Octave Doubler</option>
-                    <option value="fullChord">Full Chord Triad Lead</option>
+                    <option value="fullTriad">Full Chord Triad Lead</option>
                 </select>
             </div>
 
             <div class="control-row">
-                <label for="melodyPhrasing">Melody Note Lengths</label>
+                <label for="melodyPhrasing">Melody Note Phrasing</label>
                 <select id="melodyPhrasing">
-                    <option value="expressive" selected>Expressive (Long Sustains & Runs)</option>
+                    <option value="expressive" selected>Expressive (Varied Long & Short)</option>
                     <option value="legatoLong">Sustained Half Notes (4 Steps)</option>
-                    <option value="16th">Continuous Fast 1/16th Notes</option>
+                    <option value="16th">Continuous 1/16th Notes</option>
                 </select>
             </div>
 
             <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
 
-            <h2>5. Tone & Pitch Control</h2>
+            <h2>5. Pitch, Tempo & Order</h2>
 
             <div class="control-row">
                 <label for="chordOctave">Chord Octave</label>
@@ -383,9 +383,9 @@
             </div>
 
             <div class="control-row">
-                <label for="filterCutoff">Warmth (Filter Cutoff)</label>
-                <input type="range" id="filterCutoff" min="200" max="6000" value="1800">
-                <span class="val-disp" id="cutoffVal">1800Hz</span>
+                <label for="filterCutoff">Filter Warmth</label>
+                <input type="range" id="filterCutoff" min="200" max="6000" value="2000">
+                <span class="val-disp" id="cutoffVal">2000Hz</span>
             </div>
 
             <div class="control-row">
@@ -456,7 +456,6 @@
         }
 
         const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-        const MAJOR_SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11];
 
         const CHORD_FORMULAS = {
             "": [0, 4, 7], "M": [0, 4, 7], "MAJ": [0, 4, 7],
@@ -580,22 +579,6 @@
             return weightedChoices[Math.floor(Math.random() * weightedChoices.length)];
         }
 
-        function getStrictOctavePitches(rootMidi, targetOctave) {
-            const minMidi = (targetOctave + 1) * 12;
-            const maxMidi = minMidi + 11;
-            const rootPitchClass = rootMidi % 12;
-
-            const scalePitches = [];
-            MAJOR_SCALE_INTERVALS.forEach(interval => {
-                let noteMidi = minMidi + ((rootPitchClass + interval) % 12);
-                if (noteMidi >= minMidi && noteMidi <= maxMidi) {
-                    scalePitches.push(noteMidi);
-                }
-            });
-
-            return Array.from(new Set(scalePitches)).sort((a, b) => a - b);
-        }
-
         function getActiveTotalBars() {
             const customVal = parseInt(document.getElementById('customBarsInput').value);
             if (!isNaN(customVal) && customVal > 0) {
@@ -604,32 +587,49 @@
             return parseInt(document.getElementById('numBars').value);
         }
 
-        // Smart Musical Harmonization Based on Current Underlying Chord
-        function buildSmartHarmonizedNotes(leadPitch, harmMode, activeChordNotes) {
+        // Dynamically Extracts Scale / Chord Tones From Current Chord Array
+        function getInKeyMelodyPitches(activeChordNotes, targetOctave) {
+            const minMidi = (targetOctave + 1) * 12;
+            const maxMidi = minMidi + 11;
+            const chordPitchClasses = activeChordNotes.map(n => n % 12);
+
+            let scalePitches = [];
+            for (let m = minMidi; m <= maxMidi; m++) {
+                if (chordPitchClasses.includes(m % 12)) {
+                    scalePitches.push(m);
+                }
+            }
+
+            // Fill passing tones
+            if (scalePitches.length < 5) {
+                const rootPc = chordPitchClasses[0];
+                [0, 2, 4, 5, 7, 9, 11].forEach(interval => {
+                    let noteMidi = minMidi + ((rootPc + interval) % 12);
+                    scalePitches.push(noteMidi);
+                });
+            }
+
+            return Array.from(new Set(scalePitches)).sort((a, b) => a - b);
+        }
+
+        function buildHarmonizedNotes(leadPitch, harmMode, activeChordNotes) {
             if (harmMode === 'mono') return [leadPitch];
             if (harmMode === 'octave') return [leadPitch, clampMidiPitch(leadPitch - 12, 48, 88)];
 
             if (!activeChordNotes || activeChordNotes.length === 0) return [leadPitch];
 
-            // Normalize chord notes to lead pitch class
-            const chordPitchClasses = activeChordNotes.map(n => n % 12);
-
-            if (harmMode === 'smart3rd') {
-                // Find a harmonic 3rd or 4th semitones below that fits consonant interval
-                let harmNote = leadPitch - 3; // Minor 3rd
-                if (chordPitchClasses.includes((leadPitch - 4) % 12)) harmNote = leadPitch - 4; // Major 3rd
+            if (harmMode === 'chordTone3rd') {
+                let harmNote = leadPitch - 3; 
+                if (activeChordNotes.some(n => (n % 12) === ((leadPitch - 4) % 12))) harmNote = leadPitch - 4;
                 return [leadPitch, clampMidiPitch(harmNote, 48, 88)];
             }
 
-            if (harmMode === 'smart5th') {
-                let harmNote = leadPitch - 7; // Perfect 5th down
-                return [leadPitch, clampMidiPitch(harmNote, 48, 88)];
+            if (harmMode === 'chordTone5th') {
+                return [leadPitch, clampMidiPitch(leadPitch - 7, 48, 88)];
             }
 
-            if (harmMode === 'fullChord') {
-                let thirdDown = leadPitch - 4;
-                let fifthDown = leadPitch - 7;
-                return [leadPitch, clampMidiPitch(thirdDown, 48, 88), clampMidiPitch(fifthDown, 48, 88)];
+            if (harmMode === 'fullTriad') {
+                return [leadPitch, clampMidiPitch(leadPitch - 4, 48, 88), clampMidiPitch(leadPitch - 7, 48, 88)];
             }
 
             return [leadPitch];
@@ -672,9 +672,9 @@
                 barContainers.push(content);
             }
 
-            // Step 1: Generate Accompaniment / Chords
             const activeBarChords = [];
 
+            // Step 1: Generate Accompaniment Chords / Arpeggios
             for (let barIdx = 0; barIdx < numBars; barIdx++) {
                 const barStartStep = barIdx * stepsPerBar;
                 const tokenStr = predictNextToken(lastTokenStr);
@@ -707,7 +707,6 @@
                         durationSteps: 4
                     });
                 } else {
-                    // Arpeggiated Flow
                     let arpPitches = [...chordNotes];
                     if (chordArpPattern === 'down') arpPitches.reverse();
                     if (chordArpPattern === 'updown') arpPitches = [...chordNotes, ...[...chordNotes].reverse().slice(1,-1)];
@@ -728,17 +727,17 @@
                 renderTagToBar(barContainers[barIdx], chordNotes, true, true, barStartStep);
             }
 
-            // Step 2: Generate Harmonized Expressive Melody
+            // Step 2: Generate Strictly In-Key Harmonized Melody
             for (let barIdx = 0; barIdx < numBars; barIdx++) {
                 const barStartStep = barIdx * stepsPerBar;
                 const barEndStep = barStartStep + stepsPerBar;
                 let melStep = barStartStep;
 
                 const currentChordObj = activeBarChords[barIdx];
-                const scalePitches = getStrictOctavePitches(currentChordObj.notes[0], melOct);
+                const validPitches = getInKeyMelodyPitches(currentChordObj.notes, melOct);
 
                 while (melStep < barEndStep) {
-                    let noteDurSteps = 2; // Default 1/8 note
+                    let noteDurSteps = 2;
                     if (melodyPhrasing === '16th') noteDurSteps = 1;
                     if (melodyPhrasing === 'legatoLong') noteDurSteps = 4;
                     if (melodyPhrasing === 'expressive') {
@@ -749,21 +748,21 @@
 
                     let selectedPitch;
                     if (lastMelodyPitch !== null) {
-                        const closestIdx = scalePitches.reduce((best, curr, idx) => {
-                            return Math.abs(curr - lastMelodyPitch) < Math.abs(scalePitches[best] - lastMelodyPitch) ? idx : best;
+                        const closestIdx = validPitches.reduce((best, curr, idx) => {
+                            return Math.abs(curr - lastMelodyPitch) < Math.abs(validPitches[best] - lastMelodyPitch) ? idx : best;
                         }, 0);
 
-                        const offsets = [-1, 0, 1, 2];
+                        const offsets = [-1, 0, 1];
                         const chosenOffset = offsets[Math.floor(Math.random() * offsets.length)];
-                        const targetIdx = Math.max(0, Math.min(scalePitches.length - 1, closestIdx + chosenOffset));
-                        selectedPitch = scalePitches[targetIdx];
+                        const targetIdx = Math.max(0, Math.min(validPitches.length - 1, closestIdx + chosenOffset));
+                        selectedPitch = validPitches[targetIdx];
                     } else {
-                        selectedPitch = scalePitches[Math.floor(Math.random() * scalePitches.length)];
+                        selectedPitch = validPitches[Math.floor(Math.random() * validPitches.length)];
                     }
 
                     lastMelodyPitch = selectedPitch;
 
-                    const harmonizedNotes = buildSmartHarmonizedNotes(selectedPitch, melodyHarmMode, currentChordObj.notes);
+                    const harmonizedNotes = buildHarmonizedNotes(selectedPitch, melodyHarmMode, currentChordObj.notes);
 
                     generatedSequence.push({
                         type: 'melody',
@@ -795,7 +794,7 @@
             barContainer.appendChild(tag);
         }
 
-        // Legato Release Engine
+        // Hardware-Clocked Audio Engine
         function togglePlayPreview() {
             initAudioEngine();
 
@@ -819,7 +818,6 @@
             const cutoffFreq = parseInt(document.getElementById('filterCutoff').value);
             const ringMult = parseInt(document.getElementById('arpRing').value) / 100;
 
-            // Master Filter
             const masterFilter = audioCtx.createBiquadFilter();
             masterFilter.type = "lowpass";
             masterFilter.frequency.setValueAtTime(cutoffFreq, audioCtx.currentTime);
@@ -827,7 +825,8 @@
             masterFilter.connect(audioCtx.destination);
             activeNodes.push(masterFilter);
 
-            const maxStep = Math.max(...generatedSequence.map(s => s.step + s.durationSteps));
+            const numBars = getActiveTotalBars();
+            const totalStepsInSong = numBars * 8;
 
             generatedSequence.forEach(item => {
                 const noteStartTime = startTime + (item.step * stepSec);
@@ -841,9 +840,8 @@
                     osc.frequency.setValueAtTime(midiToFreq(midi), noteStartTime);
 
                     let baseVol = item.type === 'chord' ? 0.08 : 0.11;
-                    if (idx > 0) baseVol *= 0.7; // Lower volume for harmony notes
+                    if (idx > 0) baseVol *= 0.7;
 
-                    // Smooth Legato Envelope
                     gain.gain.setValueAtTime(0.0001, noteStartTime);
                     gain.gain.linearRampToValueAtTime(baseVol, noteStartTime + 0.03);
                     gain.gain.exponentialRampToValueAtTime(0.0001, noteStartTime + dur);
@@ -869,7 +867,7 @@
                 playTimeouts.push(timer);
             });
 
-            const totalDurationMs = ((maxStep + 2) * stepSec) * 1000;
+            const totalDurationMs = (totalStepsInSong * stepSec + 1.0) * 1000;
             const stopTimer = setTimeout(stopPlayback, totalDurationMs);
             playTimeouts.push(stopTimer);
         }
@@ -890,6 +888,7 @@
             document.querySelectorAll('.note-tag').forEach(t => t.classList.remove('active-playing'));
         }
 
+        // Variable-Length MIDI Delta Encoder
         function writeVarLen(val) {
             let buffer = val & 0x7F;
             const bytes = [];
@@ -914,6 +913,7 @@
             ];
         }
 
+        // Strict Synchronized Multi-Track MIDI Exporter
         document.getElementById('exportMidiBtn').addEventListener('click', () => {
             if (generatedSequence.length === 0) {
                 alert("No sequence generated to export. Click 'Generate AI Sequence' first.");
@@ -921,9 +921,13 @@
             }
 
             const bpm = parseInt(document.getElementById('bpm').value);
+            const numBars = getActiveTotalBars();
+            const totalStepsInSong = numBars * 8;
+
             const microsecondsPerQuarter = Math.round(60000000 / bpm);
             const ticksPerQuarter = 192;
             const ticksPerStep = ticksPerQuarter / 2;
+            const totalSongTicks = totalStepsInSong * ticksPerStep;
 
             const track1Events = [
                 0x00, 0xFF, 0x51, 0x03, 
@@ -933,7 +937,7 @@
                 0x00, 0xFF, 0x2F, 0x00
             ];
 
-            function generateTrackEvents(itemType, trackName, channelByte) {
+            function generateSynchronizedTrackEvents(itemType, trackName, channelByte) {
                 let trackEvents = [
                     0x00, 0xFF, 0x03, trackName.length, ...Array.from(trackName).map(c => c.charCodeAt(0))
                 ];
@@ -942,30 +946,38 @@
                 let currentTick = 0;
 
                 filteredItems.forEach(item => {
-                    const targetTick = Math.round(item.step * ticksPerStep);
-                    const durTicks = Math.round((item.durationSteps || 1) * ticksPerStep * 0.95);
+                    const startTick = Math.round(item.step * ticksPerStep);
+                    const durTicks = Math.round((item.durationSteps || 1) * ticksPerStep);
 
-                    let deltaTicksON = Math.max(0, targetTick - currentTick);
+                    let deltaON = Math.max(0, startTick - currentTick);
+                    
                     item.notes.forEach((note, idx) => {
-                        const d = idx === 0 ? writeVarLen(deltaTicksON) : [0x00];
+                        const d = idx === 0 ? writeVarLen(deltaON) : [0x00];
                         trackEvents.push(...d, 0x90 | channelByte, note, 88);
                     });
 
-                    const deltaBytesOFF = writeVarLen(durTicks);
+                    const deltaOFF = writeVarLen(durTicks);
                     item.notes.forEach((note, idx) => {
-                        const d = idx === 0 ? deltaBytesOFF : [0x00];
+                        const d = idx === 0 ? deltaOFF : [0x00];
                         trackEvents.push(...d, 0x80 | channelByte, note, 0x00);
                     });
 
-                    currentTick = targetTick + durTicks;
+                    currentTick = startTick + durTicks;
                 });
 
-                trackEvents.push(0x00, 0xFF, 0x2F, 0x00);
+                // Pad Track to Ensure Both End At Exact Same Bar Boundary
+                if (currentTick < totalSongTicks) {
+                    const padDelta = writeVarLen(totalSongTicks - currentTick);
+                    trackEvents.push(...padDelta, 0xFF, 0x2F, 0x00);
+                } else {
+                    trackEvents.push(0x00, 0xFF, 0x2F, 0x00);
+                }
+
                 return trackEvents;
             }
 
-            const track2Events = generateTrackEvents('chord', 'Chords Track', 0x00);
-            const track3Events = generateTrackEvents('melody', 'Melody Track', 0x01);
+            const track2Events = generateSynchronizedTrackEvents('chord', 'Chords Track', 0x00);
+            const track3Events = generateSynchronizedTrackEvents('melody', 'Melody Track', 0x01);
 
             const headerChunk = [
                 0x4D, 0x54, 0x68, 0x64,
@@ -986,7 +998,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `markov_sequence_${bpm}bpm.mid`;
+            a.download = `markov_synced_${numBars}bars_${bpm}bpm.mid`;
             document.body.appendChild(a);
             a.click();
             a.remove();
