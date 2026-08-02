@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Markov Harmonic & Legato Flow Engine v3</title>
+    <title>Markov Harmonic & Legato Flow Engine v4</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -75,7 +75,7 @@
 
         @media (min-width: 900px) {
             .layout-grid {
-                grid-template-columns: 380px 1fr;
+                grid-template-columns: 390px 1fr;
             }
         }
 
@@ -115,7 +115,7 @@
             accent-color: var(--accent-cyan);
         }
 
-        select, input[type="text"] {
+        select, input[type="text"], input[type="number"] {
             background: #222630;
             color: var(--text-main);
             border: 1px solid var(--border);
@@ -124,9 +124,8 @@
             font-size: 0.82rem;
         }
 
-        input[type="text"] {
-            width: 100%;
-        }
+        input[type="text"] { width: 100%; }
+        input[type="number"] { width: 80px; }
 
         .val-disp {
             font-family: monospace;
@@ -156,9 +155,7 @@
             min-width: 90px;
         }
 
-        button:active {
-            transform: scale(0.97);
-        }
+        button:active { transform: scale(0.97); }
 
         button.primary {
             background: var(--accent-cyan);
@@ -274,7 +271,7 @@
 <body>
 
     <header>
-        <h1>MARKOV HARMONIC & LEGATO FLOW ENGINE v3</h1>
+        <h1>MARKOV HARMONIC & LEGATO FLOW ENGINE v4</h1>
         <span class="badge" id="statusBadge">Awaiting Input</span>
     </header>
 
@@ -291,13 +288,79 @@
 
             <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
 
-            <h2>2. Pitch & Register Boundaries</h2>
+            <h2>2. Song Length (Bars)</h2>
+
+            <div class="control-row">
+                <label for="numBars">Preset Length</label>
+                <select id="numBars">
+                    <option value="1">1 Bar</option>
+                    <option value="2">2 Bars</option>
+                    <option value="4" selected>4 Bars</option>
+                    <option value="8">8 Bars</option>
+                    <option value="16">16 Bars</option>
+                    <option value="32">32 Bars</option>
+                    <option value="64">64 Bars</option>
+                </select>
+            </div>
+
+            <div class="control-row">
+                <label for="customBarsInput">Custom Length</label>
+                <input type="number" id="customBarsInput" min="1" max="128" placeholder="Override">
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
+
+            <h2>3. Arpeggiator & Chord Ring</h2>
+
+            <div class="control-row">
+                <label for="chordArp">Chord Arpeggiator</label>
+                <select id="chordArp">
+                    <option value="off" selected>Off (Sustained Block Chords)</option>
+                    <option value="up">Arp Up</option>
+                    <option value="down">Arp Down</option>
+                    <option value="updown">Arp Up / Down</option>
+                    <option value="random">Arp Random</option>
+                </select>
+            </div>
+
+            <div class="control-row">
+                <label for="arpRing">Arp Sustained Decay</label>
+                <input type="range" id="arpRing" min="20" max="250" value="160">
+                <span class="val-disp" id="ringVal">160%</span>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
+
+            <h2>4. Melody Harmonization</h2>
+
+            <div class="control-row">
+                <label for="melodyHarmMode">Lead Voice Texture</label>
+                <select id="melodyHarmMode">
+                    <option value="mono" selected>Single Lead (Monophonic)</option>
+                    <option value="3rd">Diatonic 3rds (Warm Duo)</option>
+                    <option value="octave">Octave Doubler (Thick Lead)</option>
+                    <option value="triad">Full 3-Voice Vocal Harmony</option>
+                </select>
+            </div>
+
+            <div class="control-row">
+                <label for="melodyArp">Melody Rhythm</label>
+                <select id="melodyArp">
+                    <option value="legato" selected>Flowing Legato (Varied Step)</option>
+                    <option value="16th">Continuous 1/16th Notes</option>
+                    <option value="8th">Continuous 1/8th Notes</option>
+                </select>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
+
+            <h2>5. Tone, Filter & Pitch</h2>
 
             <div class="control-row">
                 <label for="chordOctave">Chord Octave</label>
                 <select id="chordOctave">
-                    <option value="2">Octave 2 (Sub Bass)</option>
-                    <option value="3" selected>Octave 3 (Low / Warm)</option>
+                    <option value="2">Octave 2 (Deep Bass)</option>
+                    <option value="3" selected>Octave 3 (Mid-Bass Warm)</option>
                     <option value="4">Octave 4 (Mid Range)</option>
                 </select>
             </div>
@@ -310,71 +373,10 @@
                 </select>
             </div>
 
-            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
-
-            <h2>3. Synth Tone & Filter</h2>
-
             <div class="control-row">
-                <label for="chordWave">Chord Waveform</label>
-                <select id="chordWave">
-                    <option value="triangle" selected>Triangle (Soft Warm)</option>
-                    <option value="sine">Sine (Pure Deep)</option>
-                    <option value="sawtooth">Sawtooth (Rich Poly)</option>
-                </select>
-            </div>
-
-            <div class="control-row">
-                <label for="melodyWave">Melody Waveform</label>
-                <select id="melodyWave">
-                    <option value="sine" selected>Sine (Smooth Warm)</option>
-                    <option value="triangle">Triangle (Soft Flute)</option>
-                    <option value="square">Square (8-Bit Lead)</option>
-                    <option value="sawtooth">Sawtooth (Bright)</option>
-                </select>
-            </div>
-
-            <div class="control-row">
-                <label for="filterCutoff">Warmth (Filter Cutoff)</label>
-                <input type="range" id="filterCutoff" min="200" max="6000" value="1400">
-                <span class="val-disp" id="cutoffVal">1400Hz</span>
-            </div>
-
-            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
-
-            <h2>4. Arpeggiator & Rhythmic Performance</h2>
-
-            <div class="control-row">
-                <label for="chordArp">Chord Arpeggiator</label>
-                <select id="chordArp">
-                    <option value="off" selected>Off (Sustained Chords)</option>
-                    <option value="up">Up</option>
-                    <option value="down">Down</option>
-                    <option value="updown">Up / Down</option>
-                    <option value="random">Random</option>
-                </select>
-            </div>
-
-            <div class="control-row">
-                <label for="melodyArp">Melody Rhythmic Mode</label>
-                <select id="melodyArp">
-                    <option value="legato" selected>Smooth Legato (Varied Step)</option>
-                    <option value="16th">Continuous 1/16th Notes</option>
-                    <option value="8th">Continuous 1/8th Notes</option>
-                </select>
-            </div>
-
-            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
-
-            <h2>5. Markov & Song Controls</h2>
-
-            <div class="control-row">
-                <label for="numBars">Length (Bars)</label>
-                <select id="numBars">
-                    <option value="1">1 Bar</option>
-                    <option value="2">2 Bars</option>
-                    <option value="4" selected>4 Bars</option>
-                    <option value="8">8 Bars</option>
-                </select>
+                <label for="filterCutoff">Filter Warmth</label>
+                <input type="range" id="filterCutoff" min="200" max="6000" value="1600">
+                <span class="val-disp" id="cutoffVal">1600Hz</span>
             </div>
 
             <div class="control-row">
@@ -495,7 +497,6 @@
             return 440 * Math.pow(2, (midi - 69) / 12);
         }
 
-        // Global State
         let markovChain = {};
         let playedHistory = [];
         let parsedChordBank = [];
@@ -570,10 +571,9 @@
             return weightedChoices[Math.floor(Math.random() * weightedChoices.length)];
         }
 
-        // Strict Single-Octave Pitch Map
         function getStrictOctavePitches(rootMidi, targetOctave) {
-            const minMidi = (targetOctave + 1) * 12;      // e.g., Octave 4 = 60 (C4)
-            const maxMidi = minMidi + 11;                  // e.g., Octave 4 = 71 (B4)
+            const minMidi = (targetOctave + 1) * 12;
+            const maxMidi = minMidi + 11;
             const rootPitchClass = rootMidi % 12;
 
             const scalePitches = [];
@@ -587,21 +587,51 @@
             return Array.from(new Set(scalePitches)).sort((a, b) => a - b);
         }
 
+        function getActiveTotalBars() {
+            const customVal = parseInt(document.getElementById('customBarsInput').value);
+            if (!isNaN(customVal) && customVal > 0) {
+                return customVal;
+            }
+            return parseInt(document.getElementById('numBars').value);
+        }
+
+        function buildHarmonizedMelodyNotes(basePitch, harmMode, scalePitches) {
+            if (harmMode === 'mono') return [basePitch];
+            if (harmMode === 'octave') return [basePitch, clampMidiPitch(basePitch + 12, 48, 88)];
+
+            const baseIdx = scalePitches.indexOf(basePitch);
+            if (baseIdx === -1) return [basePitch];
+
+            if (harmMode === '3rd') {
+                const thirdIdx = (baseIdx + 2) % scalePitches.length;
+                return [basePitch, scalePitches[thirdIdx]];
+            }
+
+            if (harmMode === 'triad') {
+                const thirdIdx = (baseIdx + 2) % scalePitches.length;
+                const fifthIdx = (baseIdx + 4) % scalePitches.length;
+                return [basePitch, scalePitches[thirdIdx], scalePitches[fifthIdx]];
+            }
+
+            return [basePitch];
+        }
+
         function generateAISequence() {
             if (Object.keys(markovChain).length === 0 && parsedChordBank.length === 0) {
                 parseInputChords();
             }
 
-            const numBars = parseInt(document.getElementById('numBars').value);
+            const numBars = getActiveTotalBars();
             const chordOct = parseInt(document.getElementById('chordOctave').value);
             const melOct = parseInt(document.getElementById('melodyOctave').value);
             const chordArpMode = document.getElementById('chordArp').value;
             const melodyArpMode = document.getElementById('melodyArp').value;
+            const melodyHarmMode = document.getElementById('melodyHarmMode').value;
 
             generatedSequence = [];
             streamLogEl.innerHTML = '';
 
-            const stepsPerBar = 8; // 8 Eighth-note steps per bar
+            const stepsPerBar = 8;
             const totalSteps = numBars * stepsPerBar;
             let lastTokenStr = null;
             let lastMelodyPitch = null;
@@ -623,7 +653,7 @@
                 barContainers.push(content);
             }
 
-            // Step 1: Generate Chords & Arpeggios per Bar
+            // Step 1: Generate Chords & Sustained Arpeggios
             for (let barIdx = 0; barIdx < numBars; barIdx++) {
                 const barStartStep = barIdx * stepsPerBar;
                 const tokenStr = predictNextToken(lastTokenStr);
@@ -641,20 +671,15 @@
                         step: barStartStep,
                         durationSteps: stepsPerBar
                     });
-                    renderTagToBar(barContainers[barIdx], chordNotes, true, true, barStartStep);
                 } else {
-                    // Generate Arpeggiated Notes
                     let arpPitches = [...chordNotes];
                     if (chordArpMode === 'down') arpPitches.reverse();
                     if (chordArpMode === 'updown') arpPitches = [...chordNotes, ...[...chordNotes].reverse().slice(1,-1)];
 
                     for (let s = 0; s < stepsPerBar; s++) {
-                        let notePitch;
-                        if (chordArpMode === 'random') {
-                            notePitch = arpPitches[Math.floor(Math.random() * arpPitches.length)];
-                        } else {
-                            notePitch = arpPitches[s % arpPitches.length];
-                        }
+                        let notePitch = chordArpMode === 'random' 
+                            ? arpPitches[Math.floor(Math.random() * arpPitches.length)]
+                            : arpPitches[s % arpPitches.length];
 
                         generatedSequence.push({
                             type: 'chord',
@@ -663,11 +688,11 @@
                             durationSteps: 1
                         });
                     }
-                    renderTagToBar(barContainers[barIdx], chordNotes, true, true, barStartStep);
                 }
+                renderTagToBar(barContainers[barIdx], chordNotes, true, true, barStartStep);
             }
 
-            // Step 2: Generate Strictly Bounded Melody Bar-by-Bar
+            // Step 2: Generate Harmonized Melody
             for (let barIdx = 0; barIdx < numBars; barIdx++) {
                 const barStartStep = barIdx * stepsPerBar;
                 const barEndStep = barStartStep + stepsPerBar;
@@ -678,7 +703,7 @@
                 const scalePitches = getStrictOctavePitches(chordRoot, melOct);
 
                 while (melStep < barEndStep) {
-                    let noteDurSteps = 2; // Default 1/8 note
+                    let noteDurSteps = 2;
                     if (melodyArpMode === '16th') noteDurSteps = 1;
                     if (melodyArpMode === 'legato') noteDurSteps = [2, 2, 4][Math.floor(Math.random() * 3)];
 
@@ -700,19 +725,21 @@
 
                     lastMelodyPitch = selectedPitch;
 
+                    const harmonizedNotes = buildHarmonizedMelodyNotes(selectedPitch, melodyHarmMode, scalePitches);
+
                     generatedSequence.push({
                         type: 'melody',
-                        notes: [selectedPitch],
+                        notes: harmonizedNotes,
                         step: melStep,
                         durationSteps: actualDur
                     });
 
-                    renderTagToBar(barContainers[barIdx], [selectedPitch], true, false, melStep);
+                    renderTagToBar(barContainers[barIdx], harmonizedNotes, true, false, melStep);
                     melStep += actualDur;
                 }
             }
 
-            statusBadgeEl.innerText = `Generated Sequence (${numBars} Bars)`;
+            statusBadgeEl.innerText = `Generated ${numBars} Bars`;
         }
 
         function renderTagToBar(barContainer, midiNotes, isAi = false, isChord = false, step) {
@@ -724,13 +751,13 @@
                 const rootName = midiToNoteName(midiNotes[0]).replace(/\d+/, '');
                 tag.innerHTML = `<span>${rootName} Chord</span><small>[${midiNotes.map(m=>midiToNoteName(m)).join(',')}]</small>`;
             } else {
-                tag.innerHTML = `<span>Melody: ${midiToNoteName(midiNotes[0])}</span>`;
+                tag.innerHTML = `<span>Melody: ${midiNotes.map(m=>midiToNoteName(m)).join(',')}</span>`;
             }
 
             barContainer.appendChild(tag);
         }
 
-        // Filtered Synthesizer Preview Engine
+        // Stereo Panning & Sustained ADSR Synthesizer
         function togglePlayPreview() {
             initAudioEngine();
 
@@ -752,40 +779,56 @@
             const stepSec = (60 / bpm) / 2; 
             const startTime = audioCtx.currentTime + 0.1;
             const cutoffFreq = parseInt(document.getElementById('filterCutoff').value);
+            const ringMult = parseInt(document.getElementById('arpRing').value) / 100;
 
-            const chordWave = document.getElementById('chordWave').value;
-            const melodyWave = document.getElementById('melodyWave').value;
+            // Stereo Panners
+            const chordPanner = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+            if (chordPanner) chordPanner.pan.setValueAtTime(-0.35, audioCtx.currentTime);
 
-            // Master Filter
+            const melodyPanner = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+            if (melodyPanner) melodyPanner.pan.setValueAtTime(0.35, audioCtx.currentTime);
+
+            // Filter
             const masterFilter = audioCtx.createBiquadFilter();
             masterFilter.type = "lowpass";
             masterFilter.frequency.setValueAtTime(cutoffFreq, audioCtx.currentTime);
-            masterFilter.Q.setValueAtTime(1.5, audioCtx.currentTime);
+            masterFilter.Q.setValueAtTime(1.2, audioCtx.currentTime);
             masterFilter.connect(audioCtx.destination);
             activeNodes.push(masterFilter);
+
+            if (chordPanner) chordPanner.connect(masterFilter);
+            if (melodyPanner) melodyPanner.connect(masterFilter);
+
+            const chordDest = chordPanner || masterFilter;
+            const melodyDest = melodyPanner || masterFilter;
 
             const maxStep = Math.max(...generatedSequence.map(s => s.step + s.durationSteps));
 
             generatedSequence.forEach(item => {
                 const noteStartTime = startTime + (item.step * stepSec);
-                const dur = (item.durationSteps || 1) * stepSec * 0.90;
+                let dur = (item.durationSteps || 1) * stepSec;
+
+                if (item.type === 'chord' && document.getElementById('chordArp').value !== 'off') {
+                    dur *= ringMult; 
+                } else {
+                    dur *= 0.92;
+                }
 
                 item.notes.forEach((midi) => {
                     const osc = audioCtx.createOscillator();
                     const gain = audioCtx.createGain();
 
-                    osc.type = item.type === 'chord' ? chordWave : melodyWave;
+                    osc.type = item.type === 'chord' ? "triangle" : "sine";
                     osc.frequency.setValueAtTime(midiToFreq(midi), noteStartTime);
 
-                    const vol = item.type === 'chord' ? 0.08 : 0.12;
+                    const vol = item.type === 'chord' ? 0.07 : 0.10;
 
-                    // Exponential Soft ADSR Envelope
                     gain.gain.setValueAtTime(0.0001, noteStartTime);
-                    gain.gain.linearRampToValueAtTime(vol, noteStartTime + 0.015);
+                    gain.gain.linearRampToValueAtTime(vol, noteStartTime + 0.02);
                     gain.gain.exponentialRampToValueAtTime(0.0001, noteStartTime + dur);
 
                     osc.connect(gain);
-                    gain.connect(masterFilter);
+                    gain.connect(item.type === 'chord' ? chordDest : melodyDest);
 
                     osc.start(noteStartTime);
                     osc.stop(noteStartTime + dur);
@@ -805,7 +848,7 @@
                 playTimeouts.push(timer);
             });
 
-            const totalDurationMs = ((maxStep + 1) * stepSec) * 1000;
+            const totalDurationMs = ((maxStep + 2) * stepSec) * 1000;
             const stopTimer = setTimeout(stopPlayback, totalDurationMs);
             playTimeouts.push(stopTimer);
         }
@@ -973,6 +1016,7 @@
         document.getElementById('clearModelBtn').addEventListener('click', () => {
             stopPlayback();
             manualTextInput.value = '';
+            document.getElementById('customBarsInput').value = '';
             markovChain = {};
             playedHistory = [];
             parsedChordBank = [];
@@ -988,6 +1032,10 @@
 
         document.getElementById('filterCutoff').addEventListener('input', (e) => {
             document.getElementById('cutoffVal').innerText = e.target.value + 'Hz';
+        });
+
+        document.getElementById('arpRing').addEventListener('input', (e) => {
+            document.getElementById('ringVal').innerText = e.target.value + '%';
         });
 
         document.getElementById('randomness').addEventListener('input', (e) => {
