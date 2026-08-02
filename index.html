@@ -237,6 +237,259 @@
         .matrix-container {
             overflow-x: auto;
             max-height: 200px;
+            border: 1px solid var(--border);Midi patterns not the same length (Image 11):
+Track 2 (Chords) is shorter than Track 3 (Melody). I am implementing a strict **Absolute Time Grid** in the MIDI exporter, replacing delta-tick calculations relative to the end of the previous note. This will hardcode both tracks to terminate at the exact same bar boundary so they maintain perfect sync.
+
+Arp chords short (Image 10 & WAV):
+When Arpeggiated Pattern is selected, each individual step is being assigned a $1$-step length, creating choppy, clipped sounds. I am adding a **Sustain Release Decay** multiplier (selectable 100% – 300% on the new slider), which will automatically extend the gate time of each arpeggiated note into the next step.
+
+Out of step out of key really poor composition (WAV & Settings):
+The clashing dissonance you hear is because you are using the **Organic Flow** algorithm while forcing an **Arpeggiated Pattern**. I am upgrading the composition engine with a **Chord-Aware Scale Map**. This extracts the specific pitch classes from the active underlying chord (e.g., matching Minor 3rd over Minor chord) rather than naively mapping Major Scale degrees, eliminating the poor key clashes. I've also switched from `setTimeout` to the precise **AudioContext.currentTime** clock to fix the rubato timing drifts and get it perfectly in step.
+
+---
+
+### 💻 Precision Timing & Sync Code Update
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Markov Harmonic & Precision Flow Engine v6</title>
+    <style>
+        :root {
+            --bg-dark: #0f1115;
+            --panel-bg: #181b20;
+            --accent-cyan: #00e5ff;
+            --accent-purple: #9d4edd;
+            --accent-green: #00ffaa;
+            --accent-orange: #ff9100;
+            --text-main: #f0f2f5;
+            --text-dim: #8c96a6;
+            --border: #282c35;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        html, body {
+            overflow-x: hidden;
+            touch-action: pan-y;
+        }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 12px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.1rem;
+            letter-spacing: 0.5px;
+            color: var(--accent-cyan);
+        }
+
+        .badge {
+            background: rgba(0, 229, 255, 0.1);
+            color: var(--accent-cyan);
+            border: 1px solid var(--accent-cyan);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+
+        @media (min-width: 900px) {
+            .layout-grid {
+                grid-template-columns: 400px 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .panel h2 {
+            margin: 0;
+            font-size: 0.82rem;
+            color: var(--accent-green);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 45%;
+            accent-color: var(--accent-cyan);
+        }
+
+        select, input[type="text"], input[type="number"] {
+            background: #222630;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+        }
+
+        input[type="text"] { width: 100%; }
+        input[type="number"] { width: 80px; }
+
+        .val-disp {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            width: 45px;
+            text-align: right;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: #222630;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: transform 0.1s ease, background 0.15s ease;
+            flex: 1;
+            min-width: 90px;
+        }
+
+        button:active { transform: scale(0.97); }
+
+        button.primary {
+            background: var(--accent-cyan);
+            color: #000;
+            border: none;
+        }
+
+        button.playing {
+            background: var(--accent-purple);
+            color: #fff;
+            border: none;
+            box-shadow: 0 0 12px rgba(157, 78, 221, 0.5);
+        }
+
+        button.danger {
+            background: #3a1c24;
+            color: #ff4d6d;
+            border-color: #ff0055;
+        }
+
+        .stream-log {
+            min-height: 220px;
+            max-height: 440px;
+            background: #08090b;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--accent-cyan);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .bar-container {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .bar-title {
+            color: var(--accent-cyan);
+            font-size: 0.75rem;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 4px;
+        }
+
+        .bar-content {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .note-tag {
+            background: #1c222d;
+            border: 1px solid var(--border);
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 0.78rem;
+            display: inline-flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .note-tag.ai { color: var(--accent-purple); border-color: var(--accent-purple); }
+        .note-tag.chord { color: var(--accent-orange); border-color: var(--accent-orange); }
+        .note-tag.active-playing { background: var(--accent-cyan); color: #000; }
+
+        .matrix-container {
+            overflow-x: auto;
+            max-height: 200px;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: #0d0f12;
