@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Markov Harmonic Engine v16</title>
+    <title>Markov Harmonic Engine v17</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -95,7 +95,7 @@
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v16 (Movement Update)</h1>
+        <h1>HARMONIC MARKOV ENGINE v17</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -138,23 +138,16 @@
                     <option value="block">Sustained Block Chords</option>
                 </select>
             </div>
-            <div class="control-row">
-                <label for="chordArticulation">Chord Articulation</label>
-                <select id="chordArticulation">
-                    <option value="legato" selected>Legato</option>
-                    <option value="staccato">Staccato</option>
-                    <option value="pizzicato">Pizzicato</option>
-                </select>
-            </div>
 
-            <h2>4. Melody & Movement Controls</h2>
+            <h2>4. Melody & Voice Stacking Control</h2>
             <div class="control-row">
-                <label for="harmonyMode">Harmony Type</label>
-                <select id="harmonyMode">
-                    <option value="monophonic">Monophonic Solo Lead</option>
-                    <option value="diatonic3rd" selected>In-Key Diatonic 3rds</option>
-                    <option value="diatonic5th">In-Key Diatonic 5ths</option>
-                    <option value="chordTriad">Chord Triad Lead</option>
+                <label for="harmonyVoiceMode">Harmony Voice Count</label>
+                <select id="harmonyVoiceMode">
+                    <option value="dynamic" selected>AI Dynamic (Changes by Chord Tension)</option>
+                    <option value="1">Manual: 1 Voice (Monophonic Solo)</option>
+                    <option value="2">Manual: 2 Voices (Interval Pair)</option>
+                    <option value="3">Manual: 3 Voices (Triad Stack)</option>
+                    <option value="4">Manual: 4 Voices (Dense Cluster)</option>
                 </select>
             </div>
             <div class="control-row">
@@ -246,14 +239,6 @@
                 }
             }
             return Array.from(new Set(pitches)).sort((a,b) => a - b);
-        }
-
-        function getArticulationMultiplier(art) {
-            switch(art) {
-                case 'staccato': return 0.4;
-                case 'pizzicato': return 0.3;
-                default: return 0.92;
-            }
         }
 
         // MIDI File Parser
@@ -376,13 +361,12 @@
             if (parsedChords.length === 0) return alert("Please enter valid chords.");
 
             const numBars = parseInt(document.getElementById('numBars').value);
-            const harmonyMode = document.getElementById('harmonyMode').value;
+            const voiceMode = document.getElementById('harmonyVoiceMode').value;
             const baseOct = parseInt(document.getElementById('baseOctave').value);
             const chordOct = parseInt(document.getElementById('chordOctave').value);
             const scaleFilter = document.getElementById('scaleFilter').value;
             const accomStyle = document.getElementById('accompanimentStyle').value;
             const melMotion = document.getElementById('melodyMotion').value;
-            const chordArt = document.getElementById('chordArticulation').value;
 
             generatedSequence = [];
             const streamLog = document.getElementById('streamLog');
@@ -405,25 +389,22 @@
                     contentEl = document.getElementById(`bar-${b}`);
                 }
 
-                // --- DYNAMIC ACCOMPANIMENT RHYTHM ---
+                // Accompaniment Pattern
                 const rootMidi = (chordOct + 1) * 12 + chord.rootIdx;
                 const chordMidis = chord.intervals.map(i => (chordOct + 1) * 12 + ((chord.rootIdx + i) % 12));
 
                 if (accomStyle === 'broken') {
-                    // Broken Arpeggio across 8 steps for continuous flow
                     for (let s = 0; s < 8; s++) {
                         const noteToPlay = chordMidis[s % chordMidis.length];
                         generatedSequence.push({ type: 'chord', notes: [noteToPlay], step: barStartStep + s, durationSteps: 1, articulation: 'legato' });
                     }
                 } else if (accomStyle === 'bounce') {
-                    // Bass on 0 & 4, chords on 2 & 6
-                    generatedSequence.push({ type: 'chord', notes: [rootMidi], step: barStartStep, durationSteps: 2, articulation: chordArt });
-                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 2, durationSteps: 2, articulation: chordArt });
-                    generatedSequence.push({ type: 'chord', notes: [rootMidi + 12], step: barStartStep + 4, durationSteps: 2, articulation: chordArt });
-                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 6, durationSteps: 2, articulation: chordArt });
+                    generatedSequence.push({ type: 'chord', notes: [rootMidi], step: barStartStep, durationSteps: 2, articulation: 'legato' });
+                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 2, durationSteps: 2, articulation: 'legato' });
+                    generatedSequence.push({ type: 'chord', notes: [rootMidi + 12], step: barStartStep + 4, durationSteps: 2, articulation: 'legato' });
+                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 6, durationSteps: 2, articulation: 'legato' });
                 } else {
-                    // Block chord sustain
-                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep, durationSteps: 8, articulation: chordArt });
+                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep, durationSteps: 8, articulation: 'legato' });
                 }
 
                 if (contentEl) {
@@ -433,7 +414,7 @@
                     contentEl.appendChild(chordTag);
                 }
 
-                // --- MELODIC MOVEMENT & RHYTHMIC FLOW ---
+                // Melody & Voice Stacking Logic
                 const validPitches = getRegisterScalePitches(chord, minMidi, maxMidi, scaleFilter);
                 let stepOffsets = melMotion === 'steady' ? [0, 1, 2, 3, 4, 5, 6, 7] : (melMotion === 'syncopated' ? [0, 1.5, 3, 4.5, 6] : [0, 3, 6]);
 
@@ -446,17 +427,26 @@
                     const leadIndex = validPitches.indexOf(leadPitch);
                     let noteStack = [leadPitch];
 
-                    if (harmonyMode === 'diatonic3rd' && leadIndex >= 0) {
-                        const harmIdx = (leadIndex + 2) < validPitches.length ? leadIndex + 2 : leadIndex - 2;
-                        if (harmIdx >= 0 && harmIdx < validPitches.length) noteStack.push(validPitches[harmIdx]);
-                    } else if (harmonyMode === 'diatonic5th' && leadIndex >= 0) {
-                        const harmIdx = (leadIndex + 4) < validPitches.length ? leadIndex + 4 : leadIndex - 3;
-                        if (harmIdx >= 0 && harmIdx < validPitches.length) noteStack.push(validPitches[harmIdx]);
-                    } else if (harmonyMode === 'chordTriad' && leadIndex >= 0) {
+                    // Determine voice counts based on manual setting or AI dynamic rules
+                    let targetVoices = 1;
+                    if (voiceMode === 'dynamic') {
+                        // AI Dynamic: Complex chords (7ths/diminished) get 3-4 voices, major/minor get 2 voices
+                        targetVoices = chord.intervals.length >= 4 ? 3 : (b % 2 === 0 ? 2 : 1);
+                    } else {
+                        targetVoices = parseInt(voiceMode);
+                    }
+
+                    if (targetVoices >= 2 && leadIndex >= 0) {
                         const harmIdx1 = (leadIndex + 2) < validPitches.length ? leadIndex + 2 : leadIndex - 2;
+                        if (harmIdx1 >= 0 && harmIdx1 < validPitches.length) noteStack.push(validPitches[harmIdx1]);
+                    }
+                    if (targetVoices >= 3 && leadIndex >= 0) {
                         const harmIdx2 = (leadIndex + 4) < validPitches.length ? leadIndex + 4 : leadIndex - 3;
-                        if (harmIdx1 >= 0) noteStack.push(validPitches[harmIdx1]);
-                        if (harmIdx2 >= 0) noteStack.push(validPitches[harmIdx2]);
+                        if (harmIdx2 >= 0 && harmIdx2 < validPitches.length) noteStack.push(validPitches[harmIdx2]);
+                    }
+                    if (targetVoices >= 4 && leadIndex >= 0) {
+                        const harmIdx3 = (leadIndex - 2) >= 0 ? leadIndex - 2 : leadIndex + 3;
+                        if (harmIdx3 >= 0 && harmIdx3 < validPitches.length) noteStack.push(validPitches[harmIdx3]);
                     }
 
                     const dur = melMotion === 'syncopated' ? 1.5 : (melMotion === 'steady' ? 1 : 2);
@@ -465,16 +455,16 @@
                     if (contentEl) {
                         const tag = document.createElement('span');
                         tag.className = 'note-tag ai';
-                        tag.innerText = `Lead: [${noteStack.map(midiToName).join(', ')}]`;
+                        tag.innerText = `Lead (${noteStack.length}v): [${noteStack.map(midiToName).join(', ')}]`;
                         contentEl.appendChild(tag);
                     }
                 });
             }
 
-            document.getElementById('statusBadge').innerText = `Generated ${numBars} Bars with Motion`;
+            document.getElementById('statusBadge').innerText = `Generated ${numBars} Bars`;
         }
 
-        // MIDI Exporter
+        // Fixed Robust MIDI Exporter
         document.getElementById('exportMidiBtn').addEventListener('click', () => {
             if (generatedSequence.length === 0) return alert("Generate sequence first.");
             const bpm = parseInt(document.getElementById('bpm').value);
@@ -497,9 +487,7 @@
 
                 items.forEach(item => {
                     const startTick = item.step * ticksPerStep;
-                    const fullDurTicks = item.durationSteps * ticksPerStep;
-                    const mult = getArticulationMultiplier(item.articulation);
-                    const durTicks = Math.max(1, Math.round(fullDurTicks * mult));
+                    const durTicks = Math.max(1, Math.round(item.durationSteps * ticksPerStep * 0.92));
                     const deltaON = startTick - currentTick;
 
                     item.notes.forEach((n, idx) => {
@@ -533,7 +521,7 @@
             const blob = new Blob([fileBytes], { type: "audio/midi" });
             const link = document.createElement('a');
             link.href = window.URL.createObjectURL(blob);
-            link.download = `markov_v16_movement.mid`;
+            link.download = `markov_v17_output.mid`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -563,8 +551,7 @@
 
             generatedSequence.forEach(item => {
                 const noteTime = startTime + (item.step * stepSec);
-                const mult = getArticulationMultiplier(item.articulation);
-                const durSec = item.durationSteps * stepSec * mult;
+                const durSec = item.durationSteps * stepSec * 0.92;
 
                 item.notes.forEach(midi => {
                     const osc = audioCtx.createOscillator();
@@ -572,7 +559,7 @@
                     osc.type = item.type === 'chord' ? 'triangle' : 'sine';
                     osc.frequency.setValueAtTime(midiToFreq(midi), noteTime);
 
-                    let vol = item.type === 'chord' ? 0.05 : 0.1;
+                    let vol = item.type === 'chord' ? 0.05 : 0.09;
                     gain.gain.setValueAtTime(0.001, noteTime);
                     gain.gain.linearRampToValueAtTime(vol, noteTime + 0.01);
                     gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + durSec);
