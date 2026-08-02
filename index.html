@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Harmonic Markov Engine v21</title>
+    <title>Harmonic Markov Engine v22</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -60,7 +60,6 @@
         .file-upload-wrapper input[type=file] { width: 100%; cursor: pointer; }
         .val-disp { font-family: monospace; font-size: 0.8rem; color: var(--accent-cyan); width: 45px; text-align: right; }
 
-        /* Granular Per-Chord Customizer */
         .chord-settings-grid {
             display: flex; flex-direction: column; gap: 8px;
             max-height: 240px; overflow-y: auto; background: #0b0d10;
@@ -104,7 +103,6 @@
         .note-tag.ai { color: var(--accent-purple); border-color: var(--accent-purple); }
         .note-tag.chord { color: var(--accent-orange); border-color: var(--accent-orange); }
 
-        /* Direct Download Link Container */
         #midiFallbackContainer {
             display: none; background: #1a221f; border: 1px solid #00b894;
             padding: 8px 12px; border-radius: 6px; text-align: center; font-size: 0.85rem;
@@ -115,7 +113,7 @@
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v21</h1>
+        <h1>HARMONIC MARKOV ENGINE v22</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -131,8 +129,7 @@
             </div>
 
             <h2>2. Per-Chord Voice & Purple Box Settings</h2>
-            <div class="chord-settings-grid" id="chordSettingsEditor">
-                </div>
+            <div class="chord-settings-grid" id="chordSettingsEditor"></div>
 
             <h2>3. Harmonic Accompaniment Options</h2>
             <div class="control-row">
@@ -144,27 +141,27 @@
                 </select>
             </div>
             <div class="control-row">
-                <label for="accompanimentStyle">Accompaniment Rhythm</label>
+                <label for="accompanimentStyle">Accompaniment Algorithm</label>
                 <select id="accompanimentStyle">
-                    <option value="broken" selected>Broken Arpeggio (8th Flow)</option>
-                    <option value="bounce">Bass-Chord Alternating (Drive)</option>
-                    <option value="block">Sustained Whole Block Chords</option>
+                    <option value="broken" selected>Broken Arpeggio (Up/Down Contour)</option>
+                    <option value="bounce">Bass-Chord Bounce (Root Bass + Stabs)</option>
                     <option value="staccato">Staccato Driving Eighths</option>
-                    <option value="offbeat">Off-Beat Skank / Chops</option>
-                    <option value="wave16">16th-Note Fast Arp Wave</option>
-                    <option value="subPulse">Quarter Note Bass Pulse</option>
+                    <option value="offbeat">Off-Beat Skank / Reggae Chops</option>
+                    <option value="wave16">16th-Note Rolling Arp Wave</option>
+                    <option value="subPulse">Sub-Bass Quarter Note Pulse</option>
+                    <option value="block">Sustained Whole Block Chords</option>
                 </select>
             </div>
 
             <h2>4. Melody Rhythmic Movement Options</h2>
             <div class="control-row">
-                <label for="melodyStyle">Melody Motion</label>
+                <label for="melodyStyle">Melody Generator Algorithm</label>
                 <select id="melodyStyle">
-                    <option value="syncopated" selected>Syncopated & Grooving</option>
-                    <option value="driving">Driving Eighth Notes</option>
-                    <option value="virtuoso">16th-Note Fast Runs</option>
-                    <option value="ambient">Ambient Half-Notes (Long Holds)</option>
-                    <option value="sparse">Sparse & Expressive</option>
+                    <option value="syncopated" selected>Syncopated Groove (Off-beat skips)</option>
+                    <option value="driving">Driving 8th Notes (Motoric Pitch Steps)</option>
+                    <option value="virtuoso">Virtuoso 16th Runs (Fast Scale Sweeps)</option>
+                    <option value="ambient">Ambient Half-Notes (Wide Holds)</option>
+                    <option value="sparse">Sparse & Minimalist (Long Rest Pauses)</option>
                 </select>
             </div>
 
@@ -206,6 +203,7 @@
             <div class="btn-group">
                 <button id="playPreviewBtn">▶ Play Preview</button>
                 <button id="exportMidiBtn" class="success">💾 Download MIDI File</button>
+                <button id="copyMidiDataBtn">📋 Copy MIDI Data</button>
             </div>
             <div id="midiFallbackContainer">
                 Direct Link: <a id="directDownloadLink" href="#" download="sequence.mid">Click to Save MIDI File</a>
@@ -227,6 +225,7 @@
         let parsedChords = [];
         let perChordCustomSettings = {};
         let isPreviewPlaying = false;
+        let lastBase64Midi = "";
 
         const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
         const CHORD_FORMULAS = {
@@ -263,7 +262,6 @@
             return Array.from(new Set(pitches)).sort((a,b) => a - b);
         }
 
-        // --- GRANULAR PER-CHORD EDITOR ---
         function updateChordSettingsEditor() {
             const raw = document.getElementById('manualTextInput').value;
             parsedChords = raw.split(',').map(parseChordSymbol).filter(Boolean);
@@ -314,119 +312,7 @@
         document.getElementById('manualTextInput').addEventListener('input', updateChordSettingsEditor);
         updateChordSettingsEditor();
 
-        // MIDI File Parsing
-        document.getElementById('midiImportInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                try {
-                    const buffer = event.target.result;
-                    const chordNames = robustParseMidi(buffer);
-                    if (chordNames.length > 0) {
-                        document.getElementById('manualTextInput').value = chordNames.join(', ');
-                        updateChordSettingsEditor();
-                        document.getElementById('statusBadge').innerText = `Imported ${chordNames.length} Chords`;
-                    } else {
-                        alert("MIDI file loaded, but no usable chords were found.");
-                    }
-                } catch(err) {
-                    alert("Error parsing MIDI file.");
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        });
-
-        function robustParseMidi(arrayBuffer) {
-            const view = new DataView(arrayBuffer);
-            let offset = 0;
-            function readString(len) {
-                let s = "";
-                for (let i = 0; i < len; i++) s += String.fromCharCode(view.getUint8(offset++));
-                return s;
-            }
-            if (readString(4) !== "MThd") throw new Error("Invalid MIDI header");
-            const headerLen = view.getUint32(offset); offset += 4;
-            const format = view.getUint16(offset); offset += 2;
-            const tracksCount = view.getUint16(offset); offset += 2;
-            const division = view.getUint16(offset); offset += 2;
-
-            let detectedChords = [];
-            for (let t = 0; t < tracksCount; t++) {
-                if (offset >= view.byteLength) break;
-                if (readString(4) !== "MTrk") {
-                    let found = false;
-                    while (offset < view.byteLength - 4) {
-                        if (readString(4) === "MTrk") { found = true; break; }
-                        offset -= 3;
-                    }
-                    if (!found) break;
-                }
-                const trackLen = view.getUint32(offset); offset += 4;
-                const trackEnd = offset + trackLen;
-                let activeNotes = new Set();
-                let currentTick = 0;
-                let chordEventsAtTick = {};
-                let runningStatus = 0;
-
-                while (offset < trackEnd && offset < view.byteLength) {
-                    let delta = 0;
-                    let byte = view.getUint8(offset++);
-                    delta = (delta << 7) | (byte & 0x7F);
-                    while (byte & 0x80) {
-                        if (offset >= trackEnd) break;
-                        byte = view.getUint8(offset++);
-                        delta = (delta << 7) | (byte & 0x7F);
-                    }
-                    currentTick += delta;
-                    if (offset >= trackEnd) break;
-                    let statusByte = view.getUint8(offset++);
-                    let cmd, channel;
-                    if (statusByte & 0x80) {
-                        if (statusByte >= 0xF0) {
-                            if (statusByte === 0xFF) {
-                                let metaType = view.getUint8(offset++);
-                                let lenVal = 0, b = view.getUint8(offset++);
-                                lenVal = (lenVal << 7) | (b & 0x7F);
-                                while (b & 0x80) { b = view.getUint8(offset++); lenVal = (lenVal << 7) | (b & 0x7F); }
-                                offset += lenVal;
-                            } else {
-                                let lenVal = view.getUint8(offset++);
-                                offset += lenVal;
-                            }
-                            continue;
-                        }
-                        cmd = statusByte >> 4;
-                        channel = statusByte & 0x0F;
-                        runningStatus = statusByte;
-                    } else {
-                        offset--;
-                        cmd = runningStatus >> 4;
-                        channel = runningStatus & 0x0F;
-                    }
-                    let note = view.getUint8(offset++);
-                    let vel = view.getUint8(offset++);
-                    if (cmd === 0x9 && vel > 0) {
-                        activeNotes.add(note);
-                        if (!chordEventsAtTick[currentTick]) chordEventsAtTick[currentTick] = new Set();
-                        activeNotes.forEach(n => chordEventsAtTick[currentTick].add(n));
-                    } else if (cmd === 0x8 || (cmd === 0x9 && vel === 0)) {
-                        activeNotes.delete(note);
-                    }
-                }
-
-                Object.keys(chordEventsAtTick).sort((a,b)=>a-b).forEach(tickStr => {
-                    const notes = Array.from(chordEventsAtTick[tickStr]).sort((a,b)=>a-b);
-                    if (notes.length >= 2) {
-                        const root = NOTE_NAMES[notes[0] % 12];
-                        let quality = notes.some(n => (n - notes[0]) % 12 === 3) ? "m" : "";
-                        detectedChords.push(root + quality);
-                    }
-                });
-            }
-            return Array.from(new Set(detectedChords)).slice(0, 32);
-        }
-
+        // GENERATION ENGINE WITH DISTINCT PATTERNS
         function generateAISequence() {
             if (isPreviewPlaying) stopPreview();
             if (parsedChords.length === 0) return alert("Please enter valid chords.");
@@ -460,88 +346,99 @@
                     contentEl = document.getElementById(`bar-${b}`);
                 }
 
-                // Accompaniment Generation
+                // 1. HARMONIC ACCOMPANIMENT PATTERNS
                 const rootMidi = (chordOct + 1) * 12 + chord.rootIdx;
                 const chordMidis = chord.intervals.map(i => (chordOct + 1) * 12 + ((chord.rootIdx + i) % 12));
 
                 if (accomStyle === 'broken') {
-                    for (let s = 0; s < 8; s++) {
-                        const noteToPlay = chordMidis[s % chordMidis.length];
-                        generatedSequence.push({ type: 'chord', notes: [noteToPlay], step: barStartStep + s, durationSteps: 1 });
-                    }
+                    const pattern = [0, 1, 2, 1, 2, 0, 1, 2];
+                    pattern.forEach((pIdx, s) => {
+                        const noteToPlay = chordMidis[pIdx % chordMidis.length];
+                        generatedSequence.push({ type: 'chord', notes: [noteToPlay], step: barStartStep + s, durationSteps: 0.8 });
+                    });
                 } else if (accomStyle === 'bounce') {
-                    generatedSequence.push({ type: 'chord', notes: [rootMidi], step: barStartStep, durationSteps: 2 });
-                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 2, durationSteps: 2 });
-                    generatedSequence.push({ type: 'chord', notes: [rootMidi + 12], step: barStartStep + 4, durationSteps: 2 });
-                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 6, durationSteps: 2 });
+                    generatedSequence.push({ type: 'chord', notes: [rootMidi], step: barStartStep, durationSteps: 1.5 });
+                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 2, durationSteps: 1.5 });
+                    generatedSequence.push({ type: 'chord', notes: [rootMidi], step: barStartStep + 4, durationSteps: 1.5 });
+                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 6, durationSteps: 1.5 });
                 } else if (accomStyle === 'staccato') {
                     for (let s = 0; s < 8; s++) {
-                        generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + s, durationSteps: 0.5 });
+                        generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + s, durationSteps: 0.3 });
                     }
                 } else if (accomStyle === 'offbeat') {
-                    for (let s = 1; s < 8; s += 2) {
-                        generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + s, durationSteps: 0.8 });
-                    }
+                    [1, 3, 5, 7].forEach(s => {
+                        generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + s, durationSteps: 0.6 });
+                    });
                 } else if (accomStyle === 'wave16') {
                     for (let s = 0; s < 16; s++) {
-                        const noteToPlay = chordMidis[s % chordMidis.length];
-                        generatedSequence.push({ type: 'chord', notes: [noteToPlay], step: barStartStep + (s * 0.5), durationSteps: 0.4 });
+                        const nIdx = s < 8 ? (s % chordMidis.length) : ((16 - s) % chordMidis.length);
+                        generatedSequence.push({ type: 'chord', notes: [chordMidis[nIdx]], step: barStartStep + (s * 0.5), durationSteps: 0.35 });
                     }
                 } else if (accomStyle === 'subPulse') {
                     for (let s = 0; s < 8; s += 2) {
-                        generatedSequence.push({ type: 'chord', notes: [rootMidi], step: barStartStep + s, durationSteps: 1.5 });
+                        generatedSequence.push({ type: 'chord', notes: [rootMidi], step: barStartStep + s, durationSteps: 1.8 });
                     }
                 } else {
-                    // Block Chords
-                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep, durationSteps: 8 });
+                    generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep, durationSteps: 7.8 });
                 }
 
                 if (contentEl) {
                     const chordTag = document.createElement('span');
                     chordTag.className = 'note-tag chord';
-                    chordTag.innerText = `Acc. (${accomStyle})`;
+                    chordTag.innerText = `Acc (${accomStyle})`;
                     contentEl.appendChild(chordTag);
                 }
 
-                // PER-CHORD BOX & VOICE CONTROLS
+                // 2. MELODY GENERATOR ALGORITHMS
                 const chordCustom = perChordCustomSettings[chordIdx] || { voices: 'auto', boxes: '4' };
                 const boxCount = parseInt(chordCustom.boxes);
-                let targetVoices = 1;
-
-                if (chordCustom.voices === 'auto') {
-                    targetVoices = chord.intervals.length >= 4 ? 3 : (b % 2 === 0 ? 2 : 1);
-                } else {
-                    targetVoices = parseInt(chordCustom.voices);
-                }
+                let targetVoices = chordCustom.voices === 'auto' ? (chord.intervals.length >= 4 ? 3 : (b % 2 === 0 ? 2 : 1)) : parseInt(chordCustom.voices);
 
                 const validPitches = getRegisterScalePitches(chord, minMidi, maxMidi, scaleFilter);
                 const stepInterval = 8 / boxCount;
 
                 for (let i = 0; i < boxCount; i++) {
                     const stepPos = barStartStep + (i * stepInterval);
-                    const sortedByProximity = [...validPitches].sort((a, b) => Math.abs(a - lastLeadPitch) - Math.abs(b - lastLeadPitch));
-                    const leadPitch = sortedByProximity[Math.floor(Math.random() * Math.min(3, sortedByProximity.length))] || minMidi;
+                    let leadPitch = minMidi;
+
+                    if (melodyStyle === 'driving') {
+                        // Sequential scale motion
+                        const lastIdx = validPitches.indexOf(lastLeadPitch);
+                        const nextIdx = lastIdx >= 0 ? (lastIdx + 1) % validPitches.length : 0;
+                        leadPitch = validPitches[nextIdx];
+                    } else if (melodyStyle === 'virtuoso') {
+                        // Fast wide sweeps
+                        const sweepIdx = (i * 2) % validPitches.length;
+                        leadPitch = validPitches[sweepIdx];
+                    } else if (melodyStyle === 'ambient') {
+                        // Wide leaps
+                        leadPitch = validPitches[(i * 3) % validPitches.length];
+                    } else {
+                        // Syncopated / Proximity Random Leaps
+                        const sortedByProximity = [...validPitches].sort((a, b) => Math.abs(a - lastLeadPitch) - Math.abs(b - lastLeadPitch));
+                        leadPitch = sortedByProximity[Math.floor(Math.random() * Math.min(3, sortedByProximity.length))] || minMidi;
+                    }
                     lastLeadPitch = leadPitch;
 
                     const leadIndex = validPitches.indexOf(leadPitch);
                     let noteStack = [leadPitch];
 
                     if (targetVoices >= 2 && leadIndex >= 0) {
-                        const harmIdx1 = (leadIndex + 2) < validPitches.length ? leadIndex + 2 : leadIndex - 2;
-                        if (harmIdx1 >= 0 && harmIdx1 < validPitches.length) noteStack.push(validPitches[harmIdx1]);
+                        const h1 = (leadIndex + 2) % validPitches.length;
+                        noteStack.push(validPitches[h1]);
                     }
                     if (targetVoices >= 3 && leadIndex >= 0) {
-                        const harmIdx2 = (leadIndex + 4) < validPitches.length ? leadIndex + 4 : leadIndex - 3;
-                        if (harmIdx2 >= 0 && harmIdx2 < validPitches.length) noteStack.push(validPitches[harmIdx2]);
+                        const h2 = (leadIndex + 4) % validPitches.length;
+                        noteStack.push(validPitches[h2]);
                     }
                     if (targetVoices >= 4 && leadIndex >= 0) {
-                        const harmIdx3 = (leadIndex - 2) >= 0 ? leadIndex - 2 : leadIndex + 3;
-                        if (harmIdx3 >= 0 && harmIdx3 < validPitches.length) noteStack.push(validPitches[harmIdx3]);
+                        const h3 = (leadIndex + 6) % validPitches.length;
+                        noteStack.push(validPitches[h3]);
                     }
 
                     let durationFactor = 0.9;
-                    if (melodyStyle === 'ambient') durationFactor = 1.8;
-                    else if (melodyStyle === 'virtuoso') durationFactor = 0.5;
+                    if (melodyStyle === 'ambient') durationFactor = 1.9;
+                    else if (melodyStyle === 'virtuoso') durationFactor = 0.45;
 
                     generatedSequence.push({ type: 'melody', notes: noteStack, step: stepPos, durationSteps: stepInterval * durationFactor });
 
@@ -557,7 +454,7 @@
             document.getElementById('statusBadge').innerText = `Generated ${numBars} Bars`;
         }
 
-        // --- DUAL MULTI-FALLBACK MIDI EXPORTER ---
+        // MIDI EXPORTER WITH CLIPBOARD & DIRECT LINK
         document.getElementById('exportMidiBtn').addEventListener('click', () => {
             if (generatedSequence.length === 0) return alert("Please click 'Generate Sequence' first.");
             
@@ -578,7 +475,6 @@
             function buildTrackData(itemType, chan) {
                 let events = [];
                 events.push(0x00, 0xFF, 0x03, 0x04, itemType === 'chord' ? 0x42 : 0x4C, 0x65, 0x61, 0x64);
-                
                 let currentTick = 0;
                 const items = generatedSequence.filter(s => s.type === itemType);
 
@@ -590,11 +486,9 @@
                     item.notes.forEach((n, idx) => {
                         events.push(...(idx === 0 ? writeVarLen(deltaON) : [0x00]), 0x90 | chan, n, 85);
                     });
-
                     item.notes.forEach((n, idx) => {
                         events.push(...(idx === 0 ? writeVarLen(durTicks) : [0x00]), 0x80 | chan, n, 0x00);
                     });
-
                     currentTick = startTick + durTicks;
                 });
 
@@ -613,35 +507,32 @@
             const track2Events = buildTrackData('melody', 1);
             const track2Chunk = [0x4D, 0x54, 0x72, 0x6B, (track2Events.length>>24)&0xFF, (track2Events.length>>16)&0xFF, (track2Events.length>>8)&0xFF, track2Events.length&0xFF, ...track2Events];
 
-            const fileBytes = new Uint8Array([
-                ...header,
-                ...metaTrackChunk,
-                ...track1Chunk,
-                ...track2Chunk
-            ]);
+            const fileBytes = new Uint8Array([...header, ...metaTrackChunk, ...track1Chunk, ...track2Chunk]);
 
-            // Construct Base64 URI
             let binary = '';
-            for (let i = 0; i < fileBytes.byteLength; i++) {
-                binary += String.fromCharCode(fileBytes[i]);
-            }
-            const base64Data = window.btoa(binary);
-            const dataUri = 'data:audio/midi;base64,' + base64Data;
+            for (let i = 0; i < fileBytes.byteLength; i++) binary += String.fromCharCode(fileBytes[i]);
+            lastBase64Midi = window.btoa(binary);
+            const dataUri = 'data:audio/midi;base64,' + lastBase64Midi;
 
-            // Trigger Download Anchor
             const a = document.createElement('a');
             a.href = dataUri;
-            a.download = `markov_v21_${numBars}bars.mid`;
+            a.download = `markov_v22_${numBars}bars.mid`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
 
-            // Display fallback direct link box below buttons
             const fallbackContainer = document.getElementById('midiFallbackContainer');
             const fallbackLink = document.getElementById('directDownloadLink');
             fallbackLink.href = dataUri;
-            fallbackLink.download = `markov_v21_${numBars}bars.mid`;
+            fallbackLink.download = `markov_v22_${numBars}bars.mid`;
             fallbackContainer.style.display = 'block';
+        });
+
+        document.getElementById('copyMidiDataBtn').addEventListener('click', () => {
+            if (!lastBase64Midi) return alert("Generate sequence and click Export MIDI first.");
+            navigator.clipboard.writeText(lastBase64Midi).then(() => {
+                alert("MIDI Base64 String copied to clipboard!");
+            });
         });
 
         function stopPreview() {
