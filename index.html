@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Markov Harmonic Engine v8</title>
+    <title>Markov Harmonic Engine v9 (Diatonic Corrected)</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -87,13 +87,12 @@
             border-radius: 6px; font-weight: bold; font-size: 0.78rem; display: inline-flex; flex-direction: column; gap: 2px;
         }
         .note-tag.ai { color: var(--accent-purple); border-color: var(--accent-purple); }
-        .note-tag.chord { color: var(--accent-orange); border-color: var(--accent-orange); }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v8</h1>
+        <h1>HARMONIC MARKOV ENGINE v9</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -114,25 +113,24 @@
                 </select>
             </div>
 
-            <h2>3. Explicit Harmony Controls</h2>
+            <h2>3. Context-Aware Harmony Controls</h2>
             <div class="control-row">
                 <label for="harmonyMode">Harmony Type</label>
                 <select id="harmonyMode">
-                    <option value="monophonic">Monophonic Lead (Solo)</option>
-                    <option value="thirds" selected>Diatonic 3rds</option>
-                    <option value="fifths">Diatonic 5ths</option>
-                    <option value="triad">Full Triad Lead (3 Voices)</option>
-                    <option value="octaves">Octave Doubling</option>
+                    <option value="monophonic">Monophonic Solo Lead</option>
+                    <option value="diatonic3rd" selected>In-Key Diatonic 3rds</option>
+                    <option value="diatonic5th">In-Key Diatonic 5ths</option>
+                    <option value="chordTriad">Chord Triad Lead (3 Voices)</option>
+                    <option value="octave">Octave Doubler</option>
                 </select>
             </div>
 
-            <h2>4. Melody Pitch Range</h2>
+            <h2>4. Pitch Register & Constraints</h2>
             <div class="control-row">
-                <label for="octaveRange">Pitch Span (Octaves)</label>
+                <label for="octaveRange">Pitch Range</label>
                 <select id="octaveRange">
-                    <option value="1">1 Octave (Narrow)</option>
-                    <option value="2" selected>2 Octaves (Standard)</option>
-                    <option value="3">3 Octaves (Wide Register)</option>
+                    <option value="1">1 Octave</option>
+                    <option value="2" selected>2 Octaves</option>
                 </select>
             </div>
             <div class="control-row">
@@ -143,15 +141,14 @@
                 </select>
             </div>
             <div class="control-row">
-                <label for="scaleFilter">Note Selection Pool</label>
+                <label for="scaleFilter">Allowed Melody Notes</label>
                 <select id="scaleFilter">
-                    <option value="chordTones">Strict Chord Tones</option>
-                    <option value="diatonic" selected>Full Diatonic Scale</option>
-                    <option value="pentatonic">Pentatonic Scale</option>
+                    <option value="chordTones" selected>Strict Active Chord Tones Only</option>
+                    <option value="diatonic">Full Diatonic Chord Scale</option>
                 </select>
             </div>
 
-            <h2>5. Tempo & Output</h2>
+            <h2>5. Playback & Export</h2>
             <div class="control-row">
                 <label for="bpm">BPM</label>
                 <input type="range" id="bpm" min="60" max="180" value="100">
@@ -163,12 +160,12 @@
             </div>
             <div class="btn-group">
                 <button id="playPreviewBtn">▶ Play Preview</button>
-                <button id="exportMidiBtn" class="success">💾 Download MIDI File</button>
+                <button id="exportMidiBtn" class="success">💾 Download MIDI</button>
             </div>
         </div>
 
         <div class="panel">
-            <h2>Harmonized Bar Output Stream</h2>
+            <h2>Harmonized Sequence Output</h2>
             <div class="stream-log" id="streamLog">
                 <span style="color: var(--text-dim);">Click 'Generate AI Sequence' to output notes...</span>
             </div>
@@ -212,6 +209,21 @@
             };
         }
 
+        // Returns pitch array sorted in ascending order for the given register
+        function getRegisterScalePitches(chord, minMidi, maxMidi, filterType) {
+            let pitches = [];
+            for (let m = minMidi; m <= maxMidi; m++) {
+                const pc = m % 12;
+                if (filterType === 'chordTones') {
+                    if (chord.pitchClasses.includes(pc)) pitches.push(m);
+                } else {
+                    // Diatonic scale degrees relative to root
+                    if ([0, 2, 4, 5, 7, 9, 11].includes((pc - chord.rootIdx + 12) % 12)) pitches.push(m);
+                }
+            }
+            return Array.from(new Set(pitches)).sort((a,b) => a - b);
+        }
+
         function generateAISequence() {
             const raw = document.getElementById('manualTextInput').value;
             parsedChords = raw.split(',').map(parseChordSymbol).filter(Boolean);
@@ -241,41 +253,38 @@
                 streamLog.appendChild(barBox);
                 const contentEl = document.getElementById(`bar-${b}`);
 
-                // 1. Accompaniment Chords (Octave 3)
+                // 1. Accompaniment Chords (Octave 3 Mid-Bass)
                 const chordMidis = chord.intervals.map(i => 48 + ((chord.rootIdx + i) % 12));
                 generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep, durationSteps: 8 });
 
-                // 2. Build Pitch Pool Based on Selected Range Controls
-                let candidatePitches = [];
-                for (let pitch = minMidi; pitch <= maxMidi; pitch++) {
-                    const pc = pitch % 12;
-                    if (scaleFilter === 'chordTones' && chord.pitchClasses.includes(pc)) {
-                        candidatePitches.push(pitch);
-                    } else if (scaleFilter === 'pentatonic' && [0, 2, 4, 7, 9].includes((pc - chord.rootIdx + 12) % 12)) {
-                        candidatePitches.push(pitch);
-                    } else if (scaleFilter === 'diatonic' && [0, 2, 4, 5, 7, 9, 11].includes((pc - chord.rootIdx + 12) % 12)) {
-                        candidatePitches.push(pitch);
-                    }
-                }
+                // 2. Build In-Key Scale Set for Current Chord
+                const validPitches = getRegisterScalePitches(chord, minMidi, maxMidi, scaleFilter);
 
-                if (candidatePitches.length === 0) candidatePitches = [minMidi + chord.rootIdx];
-
-                // 3. Generate Step-Wise Lead & Apply Harmony Engine
+                // 3. Step-Wise Motion & Contextual Harmonization Engine
                 for (let s = 0; s < 8; s += 2) {
-                    // Pick lead note closest to last note (Step-Wise Motion)
-                    candidatePitches.sort((a, b) => Math.abs(a - lastLeadPitch) - Math.abs(b - lastLeadPitch));
-                    const leadPitch = candidatePitches[Math.floor(Math.random() * Math.min(3, candidatePitches.length))];
+                    // Pick lead pitch closest to previous lead note
+                    const sortedByProximity = [...validPitches].sort((a, b) => Math.abs(a - lastLeadPitch) - Math.abs(b - lastLeadPitch));
+                    const leadPitch = sortedByProximity[Math.floor(Math.random() * Math.min(2, sortedByProximity.length))];
                     lastLeadPitch = leadPitch;
 
-                    // Build Harmony Stack
+                    const leadIndex = validPitches.indexOf(leadPitch);
                     let noteStack = [leadPitch];
-                    if (harmonyMode === 'thirds') {
-                        noteStack.push(leadPitch + 4);
-                    } else if (harmonyMode === 'fifths') {
-                        noteStack.push(leadPitch + 7);
-                    } else if (harmonyMode === 'triad') {
-                        noteStack.push(leadPitch + 4, leadPitch + 7);
-                    } else if (harmonyMode === 'octaves') {
+
+                    // Contextual In-Key Harmonization Logic
+                    if (harmonyMode === 'diatonic3rd') {
+                        // Shift +2 scale degrees up in the active chord scale
+                        const harmIdx = (leadIndex + 2) < validPitches.length ? leadIndex + 2 : leadIndex - 2;
+                        if (harmIdx >= 0 && harmIdx < validPitches.length) noteStack.push(validPitches[harmIdx]);
+                    } else if (harmonyMode === 'diatonic5th') {
+                        // Shift +4 scale degrees up in the active chord scale
+                        const harmIdx = (leadIndex + 4) < validPitches.length ? leadIndex + 4 : leadIndex - 3;
+                        if (harmIdx >= 0 && harmIdx < validPitches.length) noteStack.push(validPitches[harmIdx]);
+                    } else if (harmonyMode === 'chordTriad') {
+                        const harmIdx1 = (leadIndex + 2) < validPitches.length ? leadIndex + 2 : leadIndex - 2;
+                        const harmIdx2 = (leadIndex + 4) < validPitches.length ? leadIndex + 4 : leadIndex - 3;
+                        if (harmIdx1 >= 0) noteStack.push(validPitches[harmIdx1]);
+                        if (harmIdx2 >= 0) noteStack.push(validPitches[harmIdx2]);
+                    } else if (harmonyMode === 'octave') {
                         noteStack.push(leadPitch - 12);
                     }
 
@@ -296,7 +305,7 @@
             document.getElementById('statusBadge').innerText = `Generated ${numBars} Bars`;
         }
 
-        // Reliable Direct MIDI Exporter
+        // Binary MIDI Exporter with Strict Alignment
         document.getElementById('exportMidiBtn').addEventListener('click', () => {
             if (generatedSequence.length === 0) return alert("Please generate a sequence first.");
 
@@ -354,17 +363,16 @@
                 ...buildTrack('melody', 1)
             ]);
 
-            // Universal Safe Direct Download Stream
             const blob = new Blob([fileBytes], { type: "audio/midi" });
             const link = document.createElement('a');
             link.href = window.URL.createObjectURL(blob);
-            link.download = `markov_harmony_${numBars}bars.mid`;
+            link.download = `markov_diatonic_${numBars}bars.mid`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         });
 
-        // Audio Preview Player
+        // Web Audio Synthesizer Preview
         function togglePlayPreview() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -398,7 +406,7 @@
                     osc.type = item.type === 'chord' ? 'triangle' : 'sine';
                     osc.frequency.setValueAtTime(midiToFreq(midi), noteTime);
 
-                    const vol = item.type === 'chord' ? 0.06 : 0.12;
+                    const vol = item.type === 'chord' ? 0.05 : 0.12;
                     gain.gain.setValueAtTime(0.001, noteTime);
                     gain.gain.linearRampToValueAtTime(vol, noteTime + 0.02);
                     gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + durSec);
