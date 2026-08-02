@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Harmonic Markov Engine v22</title>
+    <title>Harmonic Markov Engine v23</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -113,7 +113,7 @@
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v22</h1>
+        <h1>HARMONIC MARKOV ENGINE v23</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -312,6 +312,121 @@
         document.getElementById('manualTextInput').addEventListener('input', updateChordSettingsEditor);
         updateChordSettingsEditor();
 
+        // REFINED MIDI PARSER & POPULATOR FIX
+        document.getElementById('midiImportInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const buffer = event.target.result;
+                    const chordNames = robustParseMidi(buffer);
+                    if (chordNames.length > 0) {
+                        const chordStr = chordNames.join(', ');
+                        const manualInput = document.getElementById('manualTextInput');
+                        manualInput.value = chordStr;
+                        updateChordSettingsEditor();
+                        document.getElementById('statusBadge').innerText = `Imported ${chordNames.length} Chords`;
+                    } else {
+                        alert("MIDI file loaded, but no recognizable chord structures were detected.");
+                    }
+                } catch(err) {
+                    alert("Error reading MIDI file.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function robustParseMidi(arrayBuffer) {
+            const view = new DataView(arrayBuffer);
+            let offset = 0;
+            function readString(len) {
+                let s = "";
+                for (let i = 0; i < len; i++) s += String.fromCharCode(view.getUint8(offset++));
+                return s;
+            }
+            if (readString(4) !== "MThd") throw new Error("Invalid MIDI header");
+            const headerLen = view.getUint32(offset); offset += 4;
+            const format = view.getUint16(offset); offset += 2;
+            const tracksCount = view.getUint16(offset); offset += 2;
+            const division = view.getUint16(offset); offset += 2;
+
+            let detectedChords = [];
+            for (let t = 0; t < tracksCount; t++) {
+                if (offset >= view.byteLength) break;
+                if (readString(4) !== "MTrk") {
+                    let found = false;
+                    while (offset < view.byteLength - 4) {
+                        if (readString(4) === "MTrk") { found = true; break; }
+                        offset -= 3;
+                    }
+                    if (!found) break;
+                }
+                const trackLen = view.getUint32(offset); offset += 4;
+                const trackEnd = offset + trackLen;
+                let activeNotes = new Set();
+                let currentTick = 0;
+                let chordEventsAtTick = {};
+                let runningStatus = 0;
+
+                while (offset < trackEnd && offset < view.byteLength) {
+                    let delta = 0;
+                    let byte = view.getUint8(offset++);
+                    delta = (delta << 7) | (byte & 0x7F);
+                    while (byte & 0x80) {
+                        if (offset >= trackEnd) break;
+                        byte = view.getUint8(offset++);
+                        delta = (delta << 7) | (byte & 0x7F);
+                    }
+                    currentTick += delta;
+                    if (offset >= trackEnd) break;
+                    let statusByte = view.getUint8(offset++);
+                    let cmd, channel;
+                    if (statusByte & 0x80) {
+                        if (statusByte >= 0xF0) {
+                            if (statusByte === 0xFF) {
+                                let metaType = view.getUint8(offset++);
+                                let lenVal = 0, b = view.getUint8(offset++);
+                                lenVal = (lenVal << 7) | (b & 0x7F);
+                                while (b & 0x80) { b = view.getUint8(offset++); lenVal = (lenVal << 7) | (b & 0x7F); }
+                                offset += lenVal;
+                            } else {
+                                let lenVal = view.getUint8(offset++);
+                                offset += lenVal;
+                            }
+                            continue;
+                        }
+                        cmd = statusByte >> 4;
+                        channel = statusByte & 0x0F;
+                        runningStatus = statusByte;
+                    } else {
+                        offset--;
+                        cmd = runningStatus >> 4;
+                        channel = runningStatus & 0x0F;
+                    }
+                    let note = view.getUint8(offset++);
+                    let vel = view.getUint8(offset++);
+                    if (cmd === 0x9 && vel > 0) {
+                        activeNotes.add(note);
+                        if (!chordEventsAtTick[currentTick]) chordEventsAtTick[currentTick] = new Set();
+                        activeNotes.forEach(n => chordEventsAtTick[currentTick].add(n));
+                    } else if (cmd === 0x8 || (cmd === 0x9 && vel === 0)) {
+                        activeNotes.delete(note);
+                    }
+                }
+
+                Object.keys(chordEventsAtTick).sort((a,b)=>a-b).forEach(tickStr => {
+                    const notes = Array.from(chordEventsAtTick[tickStr]).sort((a,b)=>a-b);
+                    if (notes.length >= 2) {
+                        const root = NOTE_NAMES[notes[0] % 12];
+                        let quality = notes.some(n => (n - notes[0]) % 12 === 3) ? "m" : "";
+                        detectedChords.push(root + quality);
+                    }
+                });
+            }
+            return Array.from(new Set(detectedChords)).slice(0, 32);
+        }
+
         // GENERATION ENGINE WITH DISTINCT PATTERNS
         function generateAISequence() {
             if (isPreviewPlaying) stopPreview();
@@ -346,7 +461,7 @@
                     contentEl = document.getElementById(`bar-${b}`);
                 }
 
-                // 1. HARMONIC ACCOMPANIMENT PATTERNS
+                // HARMONIC ACCOMPANIMENT PATTERNS
                 const rootMidi = (chordOct + 1) * 12 + chord.rootIdx;
                 const chordMidis = chord.intervals.map(i => (chordOct + 1) * 12 + ((chord.rootIdx + i) % 12));
 
@@ -389,7 +504,7 @@
                     contentEl.appendChild(chordTag);
                 }
 
-                // 2. MELODY GENERATOR ALGORITHMS
+                // MELODY GENERATOR ALGORITHMS
                 const chordCustom = perChordCustomSettings[chordIdx] || { voices: 'auto', boxes: '4' };
                 const boxCount = parseInt(chordCustom.boxes);
                 let targetVoices = chordCustom.voices === 'auto' ? (chord.intervals.length >= 4 ? 3 : (b % 2 === 0 ? 2 : 1)) : parseInt(chordCustom.voices);
@@ -402,19 +517,15 @@
                     let leadPitch = minMidi;
 
                     if (melodyStyle === 'driving') {
-                        // Sequential scale motion
                         const lastIdx = validPitches.indexOf(lastLeadPitch);
                         const nextIdx = lastIdx >= 0 ? (lastIdx + 1) % validPitches.length : 0;
                         leadPitch = validPitches[nextIdx];
                     } else if (melodyStyle === 'virtuoso') {
-                        // Fast wide sweeps
                         const sweepIdx = (i * 2) % validPitches.length;
                         leadPitch = validPitches[sweepIdx];
                     } else if (melodyStyle === 'ambient') {
-                        // Wide leaps
                         leadPitch = validPitches[(i * 3) % validPitches.length];
                     } else {
-                        // Syncopated / Proximity Random Leaps
                         const sortedByProximity = [...validPitches].sort((a, b) => Math.abs(a - lastLeadPitch) - Math.abs(b - lastLeadPitch));
                         leadPitch = sortedByProximity[Math.floor(Math.random() * Math.min(3, sortedByProximity.length))] || minMidi;
                     }
@@ -454,7 +565,7 @@
             document.getElementById('statusBadge').innerText = `Generated ${numBars} Bars`;
         }
 
-        // MIDI EXPORTER WITH CLIPBOARD & DIRECT LINK
+        // MIDI EXPORTER
         document.getElementById('exportMidiBtn').addEventListener('click', () => {
             if (generatedSequence.length === 0) return alert("Please click 'Generate Sequence' first.");
             
@@ -516,7 +627,7 @@
 
             const a = document.createElement('a');
             a.href = dataUri;
-            a.download = `markov_v22_${numBars}bars.mid`;
+            a.download = `markov_v23_${numBars}bars.mid`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -524,7 +635,7 @@
             const fallbackContainer = document.getElementById('midiFallbackContainer');
             const fallbackLink = document.getElementById('directDownloadLink');
             fallbackLink.href = dataUri;
-            fallbackLink.download = `markov_v22_${numBars}bars.mid`;
+            fallbackLink.download = `markov_v23_${numBars}bars.mid`;
             fallbackContainer.style.display = 'block';
         });
 
