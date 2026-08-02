@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Harmonic Markov Engine v23</title>
+    <title>Harmonic Markov Engine v24</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -113,7 +113,7 @@
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v23</h1>
+        <h1>HARMONIC MARKOV ENGINE v24</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -157,10 +157,10 @@
             <div class="control-row">
                 <label for="melodyStyle">Melody Generator Algorithm</label>
                 <select id="melodyStyle">
-                    <option value="syncopated" selected>Syncopated Groove (Off-beat skips)</option>
+                    <option value="syncopated">Syncopated Groove (Off-beat skips)</option>
                     <option value="driving">Driving 8th Notes (Motoric Pitch Steps)</option>
                     <option value="virtuoso">Virtuoso 16th Runs (Fast Scale Sweeps)</option>
-                    <option value="ambient">Ambient Half-Notes (Wide Holds)</option>
+                    <option value="ambient" selected>Ambient Half-Notes (Wide Holds)</option>
                     <option value="sparse">Sparse & Minimalist (Long Rest Pauses)</option>
                 </select>
             </div>
@@ -259,7 +259,12 @@
                     if ([0, 2, 4, 5, 7, 9, 11].includes((pc - chord.rootIdx + 12) % 12)) pitches.push(m);
                 }
             }
-            return Array.from(new Set(pitches)).sort((a,b) => a - b);
+            let result = Array.from(new Set(pitches)).sort((a,b) => a - b);
+            // GUARANTEE NON-EMPTY ARRAY TO PREVENT ZERO-DIVISION & INFINITE LOOPS
+            if (result.length === 0) {
+                result = [minMidi, minMidi + 4, minMidi + 7];
+            }
+            return result;
         }
 
         function updateChordSettingsEditor() {
@@ -312,7 +317,7 @@
         document.getElementById('manualTextInput').addEventListener('input', updateChordSettingsEditor);
         updateChordSettingsEditor();
 
-        // REFINED MIDI PARSER & POPULATOR FIX
+        // MIDI IMPORT PARSER
         document.getElementById('midiImportInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -427,7 +432,7 @@
             return Array.from(new Set(detectedChords)).slice(0, 32);
         }
 
-        // GENERATION ENGINE WITH DISTINCT PATTERNS
+        // GENERATION ENGINE WITH CRASH PROTECTION AND SAFE BOUNDS
         function generateAISequence() {
             if (isPreviewPlaying) stopPreview();
             if (parsedChords.length === 0) return alert("Please enter valid chords.");
@@ -461,7 +466,7 @@
                     contentEl = document.getElementById(`bar-${b}`);
                 }
 
-                // HARMONIC ACCOMPANIMENT PATTERNS
+                // 1. HARMONIC ACCOMPANIMENT PATTERNS
                 const rootMidi = (chordOct + 1) * 12 + chord.rootIdx;
                 const chordMidis = chord.intervals.map(i => (chordOct + 1) * 12 + ((chord.rootIdx + i) % 12));
 
@@ -504,12 +509,13 @@
                     contentEl.appendChild(chordTag);
                 }
 
-                // MELODY GENERATOR ALGORITHMS
+                // 2. SAFE MELODY GENERATOR ALGORITHMS (CRASH PREVENTED)
                 const chordCustom = perChordCustomSettings[chordIdx] || { voices: 'auto', boxes: '4' };
-                const boxCount = parseInt(chordCustom.boxes);
+                const boxCount = Math.max(1, parseInt(chordCustom.boxes) || 4);
                 let targetVoices = chordCustom.voices === 'auto' ? (chord.intervals.length >= 4 ? 3 : (b % 2 === 0 ? 2 : 1)) : parseInt(chordCustom.voices);
 
                 const validPitches = getRegisterScalePitches(chord, minMidi, maxMidi, scaleFilter);
+                const pitchCount = validPitches.length; // Safe array length
                 const stepInterval = 8 / boxCount;
 
                 for (let i = 0; i < boxCount; i++) {
@@ -518,16 +524,18 @@
 
                     if (melodyStyle === 'driving') {
                         const lastIdx = validPitches.indexOf(lastLeadPitch);
-                        const nextIdx = lastIdx >= 0 ? (lastIdx + 1) % validPitches.length : 0;
+                        const nextIdx = lastIdx >= 0 ? (lastIdx + 1) % pitchCount : 0;
                         leadPitch = validPitches[nextIdx];
                     } else if (melodyStyle === 'virtuoso') {
-                        const sweepIdx = (i * 2) % validPitches.length;
+                        const sweepIdx = (i * 2) % pitchCount;
                         leadPitch = validPitches[sweepIdx];
                     } else if (melodyStyle === 'ambient') {
-                        leadPitch = validPitches[(i * 3) % validPitches.length];
+                        // FIX: SAFE MODULO PREVENTS NaN/INFINITY LOOPS
+                        const ambientIdx = (i * 3) % pitchCount;
+                        leadPitch = validPitches[ambientIdx] || validPitches[0];
                     } else {
                         const sortedByProximity = [...validPitches].sort((a, b) => Math.abs(a - lastLeadPitch) - Math.abs(b - lastLeadPitch));
-                        leadPitch = sortedByProximity[Math.floor(Math.random() * Math.min(3, sortedByProximity.length))] || minMidi;
+                        leadPitch = sortedByProximity[Math.floor(Math.random() * Math.min(3, sortedByProximity.length))] || validPitches[0];
                     }
                     lastLeadPitch = leadPitch;
 
@@ -535,15 +543,15 @@
                     let noteStack = [leadPitch];
 
                     if (targetVoices >= 2 && leadIndex >= 0) {
-                        const h1 = (leadIndex + 2) % validPitches.length;
+                        const h1 = (leadIndex + 2) % pitchCount;
                         noteStack.push(validPitches[h1]);
                     }
                     if (targetVoices >= 3 && leadIndex >= 0) {
-                        const h2 = (leadIndex + 4) % validPitches.length;
+                        const h2 = (leadIndex + 4) % pitchCount;
                         noteStack.push(validPitches[h2]);
                     }
                     if (targetVoices >= 4 && leadIndex >= 0) {
-                        const h3 = (leadIndex + 6) % validPitches.length;
+                        const h3 = (leadIndex + 6) % pitchCount;
                         noteStack.push(validPitches[h3]);
                     }
 
@@ -627,7 +635,7 @@
 
             const a = document.createElement('a');
             a.href = dataUri;
-            a.download = `markov_v23_${numBars}bars.mid`;
+            a.download = `markov_v24_${numBars}bars.mid`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -635,7 +643,7 @@
             const fallbackContainer = document.getElementById('midiFallbackContainer');
             const fallbackLink = document.getElementById('directDownloadLink');
             fallbackLink.href = dataUri;
-            fallbackLink.download = `markov_v23_${numBars}bars.mid`;
+            fallbackLink.download = `markov_v24_${numBars}bars.mid`;
             fallbackContainer.style.display = 'block';
         });
 
