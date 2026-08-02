@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Harmonic Markov Engine v26</title>
+    <title>Harmonic Markov Engine v27</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -84,7 +84,7 @@
         button.success { background: #00b894; color: #fff; border: none; }
 
         .stream-log {
-            min-height: 300px; max-height: 700px; background: #08090b; border: 1px solid var(--border);
+            min-height: 300px; max-height: 720px; background: #08090b; border: 1px solid var(--border);
             border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.85rem;
             color: var(--accent-cyan); overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
         }
@@ -113,7 +113,7 @@
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v26</h1>
+        <h1>HARMONIC MARKOV ENGINE v27</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -157,12 +157,12 @@
             <div class="control-row">
                 <label for="melodyStyle">Melody Generator Algorithm</label>
                 <select id="melodyStyle">
-                    <option value="syncopated">Syncopated Groove (Off-beat skips)</option>
-                    <option value="driving">Driving 8th Notes (Motoric Pitch Steps)</option>
-                    <option value="virtuoso">Virtuoso 16th Runs (Fast Scale Sweeps)</option>
-                    <option value="ambientSustained" selected>Ambient Sustained (Long Tones)</option>
-                    <option value="pentatonicDrift">Pentatonic Drift (Floating Leads)</option>
-                    <option value="sparse">Sparse & Minimalist (Long Rest Pauses)</option>
+                    <option value="lyricalHold" selected>Lyrical Sustained (Half-Note Holds)</option>
+                    <option value="scalarGlide">Scalar Stepwise Glide</option>
+                    <option value="cascadeArp">Cascade Arpeggiator</option>
+                    <option value="driving">Driving 8th Notes (Motoric Steps)</option>
+                    <option value="syncopated">Syncopated Groove (Off-Beat Accents)</option>
+                    <option value="sparse">Sparse Minimalist (Rest Pauses)</option>
                 </select>
             </div>
 
@@ -222,6 +222,7 @@
     <script>
         let audioCtx = null;
         let activeNodes = [];
+        let previewTimer = null;
         let generatedSequence = [];
         let parsedChords = [];
         let perBarCustomSettings = {};
@@ -230,8 +231,8 @@
 
         const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
         const CHORD_FORMULAS = {
-            "": [0, 4, 7], "M": [0, 4, 7], "MAJ": [0, 4, 7],
-            "MIN": [0, 3, 7], "M": [0, 3, 7],
+            "": [0, 4, 7], "MAJ": [0, 4, 7], "MAJOR": [0, 4, 7],
+            "MIN": [0, 3, 7], "M": [0, 3, 7], "m": [0, 3, 7],
             "7": [0, 4, 7, 10], "MAJ7": [0, 4, 7, 11], "M7": [0, 3, 7, 10],
             "DIM": [0, 3, 6], "DIM7": [0, 3, 6, 9], "6": [0, 4, 7, 9]
         };
@@ -241,11 +242,12 @@
 
         function parseChordSymbol(str) {
             let clean = str.trim().replace(/Db/g,'C#').replace(/Eb/g,'D#').replace(/Gb/g,'F#').replace(/Ab/g,'G#').replace(/Bb/g,'A#');
-            const match = clean.match(/^([A-G]#?)(.*)$/i);
+            const match = clean.match(/^([A-G]#?)(.*)$/);
             if (!match) return null;
             const rootIdx = NOTE_NAMES.indexOf(match[1].toUpperCase());
             if (rootIdx === -1) return null;
-            const quality = match[2].toUpperCase();
+            const rawQual = match[2].trim();
+            const quality = rawQual === 'm' ? 'MIN' : rawQual.toUpperCase();
             const intervals = CHORD_FORMULAS[quality] || CHORD_FORMULAS[""];
             return { name: str.trim(), rootIdx: rootIdx, pitchClasses: intervals.map(i => (rootIdx + i) % 12), intervals: intervals };
         }
@@ -275,6 +277,8 @@
             editorEl.innerHTML = '';
 
             if (parsedChords.length === 0) return;
+
+            const frag = document.createDocumentFragment();
 
             for (let b = 0; b < numBars; b++) {
                 const chordIdx = b % parsedChords.length;
@@ -309,7 +313,7 @@
                         </select>
                     </div>
                 `;
-                editorEl.appendChild(row);
+                frag.appendChild(row);
 
                 row.querySelector(`#boxes-sel-${b}`).addEventListener('change', (e) => {
                     perBarCustomSettings[b].boxes = e.target.value;
@@ -318,6 +322,7 @@
                     perBarCustomSettings[b].voices = e.target.value;
                 });
             }
+            editorEl.appendChild(frag);
         }
 
         document.getElementById('manualTextInput').addEventListener('input', updateChordSettingsEditor);
@@ -439,7 +444,7 @@
             return Array.from(new Set(detectedChords)).slice(0, 32);
         }
 
-        // GENERATION ENGINE WITH FULL BAR VISIBILITY AND SECURE MELODY ALGORITHMS
+        // GENERATION ENGINE
         function generateAISequence() {
             if (isPreviewPlaying) stopPreview();
             if (parsedChords.length === 0) return alert("Please enter valid chords.");
@@ -454,6 +459,7 @@
             generatedSequence = [];
             const streamLog = document.getElementById('streamLog');
             streamLog.innerHTML = '';
+            const frag = document.createDocumentFragment();
 
             const minMidi = (baseOct + 1) * 12;
             const maxMidi = minMidi + 24;
@@ -464,14 +470,20 @@
                 const chord = parsedChords[chordIdx];
                 const barStartStep = b * 8;
 
-                // RENDER BAR CONTAINERS FOR ALL NUMBERS (INCLUDING 32 BARS)
                 const barBox = document.createElement('div');
                 barBox.className = 'bar-container';
                 barBox.innerHTML = `<div class="bar-title">BAR ${b + 1}: ${chord.name}</div><div class="bar-content" id="bar-${b}"></div>`;
-                streamLog.appendChild(barBox);
+                frag.appendChild(barBox);
+            }
+            streamLog.appendChild(frag);
+
+            for (let b = 0; b < numBars; b++) {
+                const chordIdx = b % parsedChords.length;
+                const chord = parsedChords[chordIdx];
+                const barStartStep = b * 8;
                 const contentEl = document.getElementById(`bar-${b}`);
 
-                // 1. HARMONIC ACCOMPANIMENT PATTERNS
+                // ACCOMPANIMENT PATTERNS
                 const rootMidi = (chordOct + 1) * 12 + chord.rootIdx;
                 const chordMidis = chord.intervals.map(i => (chordOct + 1) * 12 + ((chord.rootIdx + i) % 12));
 
@@ -514,7 +526,7 @@
                     contentEl.appendChild(chordTag);
                 }
 
-                // 2. MELODY GENERATOR ALGORITHMS
+                // MELODY GENERATOR ALGORITHMS
                 const chordCustom = perBarCustomSettings[b] || { voices: 'auto', boxes: '4' };
                 const boxCount = Math.max(1, parseInt(chordCustom.boxes) || 4);
                 let targetVoices = chordCustom.voices === 'auto' ? (chord.intervals.length >= 4 ? 3 : (b % 2 === 0 ? 2 : 1)) : parseInt(chordCustom.voices);
@@ -530,20 +542,25 @@
                     if (melodyStyle === 'driving') {
                         let lastIdx = validPitches.indexOf(lastLeadPitch);
                         if (lastIdx < 0) lastIdx = 0;
-                        const nextIdx = (lastIdx + 1) % pitchCount;
+                        leadPitch = validPitches[(lastIdx + 1) % pitchCount];
+                    } else if (melodyStyle === 'scalarGlide') {
+                        let lastIdx = validPitches.indexOf(lastLeadPitch);
+                        if (lastIdx < 0) lastIdx = 0;
+                        const direction = (b % 2 === 0) ? 1 : -1;
+                        const nextIdx = (lastIdx + direction + pitchCount) % pitchCount;
                         leadPitch = validPitches[nextIdx];
-                    } else if (melodyStyle === 'virtuoso') {
-                        const sweepIdx = (i * 2) % pitchCount;
-                        leadPitch = validPitches[sweepIdx];
-                    } else if (melodyStyle === 'ambientSustained') {
-                        const ambientIdx = Math.floor((i * 2) % pitchCount);
-                        leadPitch = validPitches[ambientIdx] || validPitches[0];
-                    } else if (melodyStyle === 'pentatonicDrift') {
-                        const driftStep = (i * 3) % pitchCount;
-                        leadPitch = validPitches[driftStep] || validPitches[0];
-                    } else {
+                    } else if (melodyStyle === 'cascadeArp') {
+                        const cascadeIdx = (i * 2 + b) % pitchCount;
+                        leadPitch = validPitches[cascadeIdx];
+                    } else if (melodyStyle === 'lyricalHold') {
+                        const lyricalIdx = Math.floor((i * 1.5)) % pitchCount;
+                        leadPitch = validPitches[lyricalIdx] || validPitches[0];
+                    } else if (melodyStyle === 'syncopated') {
+                        const syncIdx = (i * 3 + b * 2) % pitchCount;
+                        leadPitch = validPitches[syncIdx];
+                    } else { // sparse
                         const sortedByProximity = [...validPitches].sort((a, b) => Math.abs(a - lastLeadPitch) - Math.abs(b - lastLeadPitch));
-                        leadPitch = sortedByProximity[Math.floor(Math.random() * Math.min(3, sortedByProximity.length))] || validPitches[0];
+                        leadPitch = sortedByProximity[0] || validPitches[0];
                     }
                     lastLeadPitch = leadPitch;
 
@@ -566,8 +583,7 @@
                     }
 
                     let durationFactor = 0.9;
-                    if (melodyStyle === 'ambientSustained') durationFactor = 1.85;
-                    else if (melodyStyle === 'virtuoso') durationFactor = 0.45;
+                    if (melodyStyle === 'lyricalHold') durationFactor = 1.6;
 
                     generatedSequence.push({ type: 'melody', notes: noteStack, step: stepPos, durationSteps: stepInterval * durationFactor });
 
@@ -645,7 +661,7 @@
 
             const a = document.createElement('a');
             a.href = dataUri;
-            a.download = `markov_v26_${numBars}bars.mid`;
+            a.download = `markov_v27_${numBars}bars.mid`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -653,7 +669,7 @@
             const fallbackContainer = document.getElementById('midiFallbackContainer');
             const fallbackLink = document.getElementById('directDownloadLink');
             fallbackLink.href = dataUri;
-            fallbackLink.download = `markov_v26_${numBars}bars.mid`;
+            fallbackLink.download = `markov_v27_${numBars}bars.mid`;
             fallbackContainer.style.display = 'block';
         });
 
@@ -666,12 +682,14 @@
 
         function stopPreview() {
             isPreviewPlaying = false;
+            if (previewTimer) clearTimeout(previewTimer);
             activeNodes.forEach(n => { try { n.stop(); n.disconnect(); } catch(e){} });
             activeNodes = [];
             document.getElementById('playPreviewBtn').innerText = "▶ Play Preview";
             document.getElementById('playPreviewBtn').classList.remove('playing');
         }
 
+        // SMOOTH STREAMING PREVIEW AUDIO ENGINE (NO SAFARI / MOBILE LAG)
         function togglePlayPreview() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -686,28 +704,47 @@
             const stepSec = (60 / bpm) / 2;
             const startTime = audioCtx.currentTime + 0.05;
 
-            generatedSequence.forEach(item => {
-                const noteTime = startTime + (item.step * stepSec);
-                const durSec = item.durationSteps * stepSec;
+            // Batch schedule items using lookahead
+            let idx = 0;
+            function scheduleBatch() {
+                if (!isPreviewPlaying) return;
+                const now = audioCtx.currentTime;
+                while (idx < generatedSequence.length) {
+                    const item = generatedSequence[idx];
+                    const noteTime = startTime + (item.step * stepSec);
+                    if (noteTime > now + 1.5) break; // Schedule up to 1.5 seconds ahead
 
-                item.notes.forEach(midi => {
-                    const osc = audioCtx.createOscillator();
-                    const gain = audioCtx.createGain();
-                    osc.type = item.type === 'chord' ? 'triangle' : 'sine';
-                    osc.frequency.setValueAtTime(midiToFreq(midi), noteTime);
+                    const durSec = Math.max(0.02, item.durationSteps * stepSec);
 
-                    let vol = item.type === 'chord' ? 0.05 : 0.09;
-                    gain.gain.setValueAtTime(0.001, noteTime);
-                    gain.gain.linearRampToValueAtTime(vol, noteTime + 0.01);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + durSec);
+                    item.notes.forEach(midi => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = item.type === 'chord' ? 'triangle' : 'sine';
+                        osc.frequency.setValueAtTime(midiToFreq(midi), noteTime);
 
-                    osc.connect(gain);
-                    gain.connect(audioCtx.destination);
-                    osc.start(noteTime);
-                    osc.stop(noteTime + durSec);
-                    activeNodes.push(osc);
-                });
-            });
+                        let vol = item.type === 'chord' ? 0.05 : 0.09;
+                        gain.gain.setValueAtTime(0.001, noteTime);
+                        gain.gain.linearRampToValueAtTime(vol, noteTime + 0.01);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + durSec);
+
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(noteTime);
+                        osc.stop(noteTime + durSec);
+                        activeNodes.push(osc);
+                    });
+                    idx++;
+                }
+
+                if (idx < generatedSequence.length && isPreviewPlaying) {
+                    previewTimer = setTimeout(scheduleBatch, 200);
+                } else if (idx >= generatedSequence.length) {
+                    const totalDurationSec = (generatedSequence[generatedSequence.length - 1].step + 4) * stepSec;
+                    previewTimer = setTimeout(() => { if (isPreviewPlaying) stopPreview(); }, totalDurationSec * 1000);
+                }
+            }
+
+            scheduleBatch();
         }
 
         document.getElementById('generateBtn').addEventListener('click', generateAISequence);
