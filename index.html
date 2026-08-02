@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Markov Harmonic Generator & Humanized Flow Engine</title>
+    <title>Markov Harmonic & Legato Flow Engine</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -260,7 +260,7 @@
 <body>
 
     <header>
-        <h1>MARKOV HARMONIC & MELODIC GENERATOR</h1>
+        <h1>MARKOV HARMONIC & LEGATO FLOW ENGINE</h1>
         <span class="badge" id="statusBadge">Awaiting Input</span>
     </header>
 
@@ -303,6 +303,15 @@
             </div>
 
             <div class="control-row">
+                <label for="chordDuration">Chord Duration</label>
+                <select id="chordDuration">
+                    <option value="8" selected>1 Full Bar (4 Beats)</option>
+                    <option value="4">Half Bar (2 Beats)</option>
+                    <option value="16">2 Full Bars (8 Beats)</option>
+                </select>
+            </div>
+
+            <div class="control-row">
                 <label for="inputTarget">Generation Target</label>
                 <select id="inputTarget">
                     <option value="chords" selected>Chords Mode</option>
@@ -335,7 +344,7 @@
             </div>
 
             <div class="control-row">
-                <label for="humanizeAmount">Humanization Feel</label>
+                <label for="humanizeAmount">Humanize Feel</label>
                 <input type="range" id="humanizeAmount" min="0" max="100" value="65">
                 <span class="val-disp" id="humanizeVal">65%</span>
             </div>
@@ -408,12 +417,8 @@
         let activeOscillators = [];
 
         function ensureAudioContext() {
-            if (!audioCtx) {
-                audioCtx = new AudioContext();
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
         }
 
         const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -486,7 +491,7 @@
             if (target === 'chords') {
                 accompanyModeSelect.innerHTML = `
                     <option value="chords_only">Chords Only</option>
-                    <option value="chords_melody" selected>Chords + Overlay Melody</option>
+                    <option value="chords_melody" selected>Chords + Smooth Melody</option>
                     <option value="melody_only">Melody Only</option>
                 `;
             } else {
@@ -603,12 +608,13 @@
             const accompanyMode = accompanyModeSelect.value;
             const chordOct = parseInt(document.getElementById('chordOctave').value);
             const melOct = parseInt(document.getElementById('melodyOctave').value);
+            const chordStepDuration = parseInt(document.getElementById('chordDuration').value); // 8 steps = 1 bar
             const humanizeVal = parseInt(document.getElementById('humanizeAmount').value) / 100;
 
             generatedSequence = [];
             streamLogEl.innerHTML = '';
 
-            const stepsPerBar = 4; // 8th note resolution steps
+            const stepsPerBar = 8; // 8 steps per bar (eighth note resolution)
             const totalSteps = numBars * stepsPerBar;
             let lastTokenStr = null;
             let lastMelodyPitch = null;
@@ -621,8 +627,8 @@
                     streamLogEl.appendChild(barMarker);
                 }
 
-                // Generate Chord on beat 1 and beat 3 (step 0 and step 2 of each bar)
-                if (step % 2 === 0) {
+                // Generate Sustained Block Chords
+                if (step % chordStepDuration === 0) {
                     const tokenStr = predictNextToken(lastTokenStr);
                     lastTokenStr = tokenStr;
 
@@ -632,15 +638,14 @@
                     trainMarkovToken(chordNotes);
 
                     if (accompanyMode === 'chords_only' || accompanyMode === 'chords_melody' || accompanyMode === 'melody_chords') {
-                        // Velocity humanization
-                        const baseVel = step % 4 === 0 ? 95 : 82; // Downbeat accent
-                        const velRange = Math.round(15 * humanizeVal);
+                        const baseVel = 88;
+                        const velRange = Math.round(12 * humanizeVal);
 
                         generatedSequence.push({
                             type: 'chord',
                             notes: chordNotes,
                             step: step,
-                            durationSteps: 2,
+                            durationSteps: chordStepDuration,
                             velocities: chordNotes.map(() => Math.min(127, Math.max(40, baseVel + Math.floor((Math.random() - 0.5) * velRange)))),
                             strumOffsetMs: Math.round((Math.random() * 18 + 10) * humanizeVal)
                         });
@@ -648,50 +653,56 @@
                         renderTag(chordNotes, true, true, step);
                     }
                 }
+            }
 
-                // Generate Voice-Led Melody
-                if (accompanyMode === 'melody_only' || accompanyMode === 'chords_melody' || accompanyMode === 'melody_chords') {
-                    // Rest probability (20% rest on non-downbeats for natural phrasing)
-                    if (step % 2 !== 0 && Math.random() < 0.35) continue;
+            // Generate Smooth Legato Melody Line
+            if (accompanyMode === 'melody_only' || accompanyMode === 'chords_melody' || accompanyMode === 'melody_chords') {
+                let melStep = 0;
+                while (melStep < totalSteps) {
+                    // Decide note duration (quarter note = 2 steps, dotted = 3 steps, half note = 4 steps)
+                    const durChoices = [2, 2, 3, 4];
+                    const noteDurSteps = durChoices[Math.floor(Math.random() * durChoices.length)];
 
-                    let currentChordNotes = lastTokenStr ? lastTokenStr.split('-').map(n => parseInt(n)) : [60, 64, 67];
-                    
-                    // Voice leading: pick scale tone closest to last melody pitch
+                    // Find active chord notes at this step
+                    const activeChordObj = generatedSequence.find(s => s.type === 'chord' && melStep >= s.step && melStep < (s.step + s.durationSteps));
+                    const currentChordNotes = activeChordObj ? activeChordObj.notes : [60, 64, 67];
+
+                    // Voice Leading: Pick scale tone or neighbor tone within 1-2 semitones
                     let candidatePitches = [];
                     currentChordNotes.forEach(cn => {
                         const basePitch = (cn % 12) + (melOct + 1) * 12;
                         candidatePitches.push(clampMidiPitch(basePitch, 52, 84));
-                        candidatePitches.push(clampMidiPitch(basePitch + 2, 52, 84)); // Passing step
+                        candidatePitches.push(clampMidiPitch(basePitch + 2, 52, 84));
                     });
 
                     let selectedMelodyPitch;
                     if (lastMelodyPitch !== null) {
                         candidatePitches.sort((a, b) => Math.abs(a - lastMelodyPitch) - Math.abs(b - lastMelodyPitch));
-                        // 80% chance pick closest smooth tone, 20% jump
-                        selectedMelodyPitch = Math.random() < 0.8 ? candidatePitches[0] : candidatePitches[Math.floor(Math.random() * candidatePitches.length)];
+                        selectedMelodyPitch = Math.random() < 0.85 ? candidatePitches[0] : candidatePitches[Math.floor(Math.random() * candidatePitches.length)];
                     } else {
                         selectedMelodyPitch = candidatePitches[Math.floor(Math.random() * candidatePitches.length)];
                     }
 
                     lastMelodyPitch = selectedMelodyPitch;
 
-                    const melVel = step % 4 === 0 ? 105 : 90;
-                    const velRange = Math.round(18 * humanizeVal);
+                    const melVel = melStep % 8 === 0 ? 102 : 88;
+                    const velRange = Math.round(16 * humanizeVal);
 
                     generatedSequence.push({
                         type: 'melody',
                         notes: [selectedMelodyPitch],
-                        step: step,
-                        durationSteps: 1,
+                        step: melStep,
+                        durationSteps: Math.min(noteDurSteps, totalSteps - melStep),
                         velocities: [Math.min(127, Math.max(50, melVel + Math.floor((Math.random() - 0.5) * velRange)))],
-                        timingOffsetMs: Math.round((Math.random() - 0.5) * 20 * humanizeVal)
+                        timingOffsetMs: Math.round((Math.random() - 0.5) * 16 * humanizeVal)
                     });
 
-                    renderTag([selectedMelodyPitch], true, false, step);
+                    renderTag([selectedMelodyPitch], true, false, melStep);
+                    melStep += noteDurSteps;
                 }
             }
 
-            statusBadgeEl.innerText = `Generated ${numBars} Humanized Bars`;
+            statusBadgeEl.innerText = `Generated ${numBars} Sustained Bars`;
         }
 
         function renderTag(midiNotes, isAi = false, isChord = false, step) {
@@ -709,7 +720,7 @@
             streamLogEl.appendChild(tag);
         }
 
-        // Web Audio Preview with Strumming & Timing Offset
+        // Web Audio Preview
         function togglePlayPreview() {
             if (isPreviewPlaying) {
                 stopPlayback();
@@ -730,11 +741,11 @@
             const stepSec = (60 / bpm) / 2; // 8th note steps
             const startTime = audioCtx.currentTime + 0.08;
 
-            const maxStep = Math.max(...generatedSequence.map(s => s.step));
+            const maxStep = Math.max(...generatedSequence.map(s => s.step + s.durationSteps));
 
             generatedSequence.forEach(item => {
                 const stepTime = startTime + (item.step * stepSec) + ((item.timingOffsetMs || 0) / 1000);
-                const dur = (item.durationSteps || 1) * stepSec * 0.85;
+                const dur = (item.durationSteps || 1) * stepSec * 0.92;
 
                 item.notes.forEach((midi, idx) => {
                     const strumOffset = item.type === 'chord' ? (idx * (item.strumOffsetMs || 15) / 1000) : 0;
@@ -748,7 +759,7 @@
                     const velGain = ((item.velocities ? item.velocities[idx] : 90) / 127) * (item.type === 'chord' ? 0.12 : 0.18);
 
                     gain.gain.setValueAtTime(0, noteStartTime);
-                    gain.gain.linearRampToValueAtTime(velGain, noteStartTime + 0.015);
+                    gain.gain.linearRampToValueAtTime(velGain, noteStartTime + 0.02);
                     gain.gain.exponentialRampToValueAtTime(0.0001, noteStartTime + dur);
 
                     osc.connect(gain);
@@ -759,7 +770,6 @@
                     activeOscillators.push(osc);
                 });
 
-                // UI highlight scheduling
                 const delayMs = ((startTime + item.step * stepSec) - audioCtx.currentTime) * 1000;
                 const timer = setTimeout(() => {
                     if (!isPreviewPlaying) return;
@@ -772,7 +782,7 @@
                 playTimeouts.push(timer);
             });
 
-            const totalDurationMs = ((maxStep + 2) * stepSec) * 1000;
+            const totalDurationMs = ((maxStep + 1) * stepSec) * 1000;
             const stopTimer = setTimeout(stopPlayback, totalDurationMs);
             playTimeouts.push(stopTimer);
         }
@@ -797,7 +807,6 @@
             document.querySelectorAll('.note-tag').forEach(t => t.classList.remove('active-playing'));
         }
 
-        // Variable-length Quantity Encoder for MIDI
         function writeVarLen(val) {
             let buffer = val & 0x7F;
             const bytes = [];
@@ -822,7 +831,7 @@
             ];
         }
 
-        // Standard Type 1 Multi-Track MIDI Writer (Separate Tracks for Chords & Melody)
+        // Multi-Track MIDI Writer with Sustained Duration
         document.getElementById('exportMidiBtn').addEventListener('click', () => {
             if (generatedSequence.length === 0) {
                 alert("No sequence generated to export. Click 'Generate AI Bars' first.");
@@ -831,10 +840,9 @@
 
             const bpm = parseInt(document.getElementById('bpm').value);
             const microsecondsPerQuarter = Math.round(60000000 / bpm);
-            const ticksPerQuarter = 192; // Standard 192 TPQN
-            const ticksPerStep = ticksPerQuarter / 2; // 96 ticks per 8th note step
+            const ticksPerQuarter = 192;
+            const ticksPerStep = ticksPerQuarter / 2; // 96 ticks per step
 
-            // Track 1: Tempo / Time Sig Meta Track
             const track1Events = [
                 0x00, 0xFF, 0x51, 0x03, 
                 (microsecondsPerQuarter >> 16) & 0xFF, 
@@ -844,7 +852,6 @@
                 0x00, 0xFF, 0x2F, 0x00
             ];
 
-            // Helper to generate events for a single track
             function generateTrackEvents(itemType, trackName, channelByte) {
                 let trackEvents = [
                     0x00, 0xFF, 0x03, trackName.length, ...Array.from(trackName).map(c => c.charCodeAt(0))
@@ -855,14 +862,12 @@
 
                 filteredItems.forEach(item => {
                     const targetTick = Math.round(item.step * ticksPerStep + ((item.timingOffsetMs || 0) * (bpm / 60000) * ticksPerQuarter));
-                    const durTicks = Math.round((item.durationSteps || 1) * ticksPerStep * 0.85);
+                    const durTicks = Math.round((item.durationSteps || 1) * ticksPerStep * 0.95);
 
                     // Note ON
                     let deltaTicksON = Math.max(0, targetTick - currentTick);
-                    const deltaBytesON = writeVarLen(deltaTicksON);
-
                     item.notes.forEach((note, idx) => {
-                        const strumTickOffset = item.type === 'chord' ? Math.round(idx * 4) : 0; // micro strum
+                        const strumTickOffset = item.type === 'chord' ? Math.round(idx * 4) : 0;
                         const d = idx === 0 ? writeVarLen(deltaTicksON + strumTickOffset) : [0x00];
                         const vel = item.velocities ? item.velocities[idx] : 90;
                         trackEvents.push(...d, 0x90 | channelByte, note, vel);
@@ -882,16 +887,15 @@
                 return trackEvents;
             }
 
-            const track2Events = generateTrackEvents('chord', 'Chords Track', 0x00);  // Chords on Channel 1
-            const track3Events = generateTrackEvents('melody', 'Melody Track', 0x01); // Melody on Channel 2
+            const track2Events = generateTrackEvents('chord', 'Chords Track', 0x00);
+            const track3Events = generateTrackEvents('melody', 'Melody Track', 0x01);
 
-            // MIDI Type 1 File Header (3 Tracks)
             const headerChunk = [
-                0x4D, 0x54, 0x68, 0x64, // "MThd"
-                0x00, 0x00, 0x00, 0x06, // Chunk length
-                0x00, 0x01,             // Format Type 1 (Multi-Track)
-                0x00, 0x03,             // 3 Tracks (Meta, Chords, Melody)
-                0x00, 0xC0              // 192 Ticks per quarter note
+                0x4D, 0x54, 0x68, 0x64,
+                0x00, 0x00, 0x00, 0x06,
+                0x00, 0x01,
+                0x00, 0x03,
+                0x00, 0xC0
             ];
 
             const fullFile = new Uint8Array([
@@ -905,7 +909,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `markov_multitrack_sequence_${bpm}bpm.mid`;
+            a.download = `markov_sustained_sequence_${bpm}bpm.mid`;
             document.body.appendChild(a);
             a.click();
             a.remove();
