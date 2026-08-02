@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Harmonic Markov Engine v20</title>
+    <title>Harmonic Markov Engine v21</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -85,7 +85,7 @@
         button.success { background: #00b894; color: #fff; border: none; }
 
         .stream-log {
-            min-height: 250px; max-height: 560px; background: #08090b; border: 1px solid var(--border);
+            min-height: 250px; max-height: 580px; background: #08090b; border: 1px solid var(--border);
             border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.85rem;
             color: var(--accent-cyan); overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
         }
@@ -115,7 +115,7 @@
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v20</h1>
+        <h1>HARMONIC MARKOV ENGINE v21</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -130,11 +130,11 @@
                 <input type="file" id="midiImportInput" accept=".mid,.midi">
             </div>
 
-            <h2>2. Per-Chord Voice & Box Count Controls</h2>
+            <h2>2. Per-Chord Voice & Purple Box Settings</h2>
             <div class="chord-settings-grid" id="chordSettingsEditor">
                 </div>
 
-            <h2>3. Harmonic Accompaniment</h2>
+            <h2>3. Harmonic Accompaniment Options</h2>
             <div class="control-row">
                 <label for="chordOctave">Bass/Chord Octave</label>
                 <select id="chordOctave">
@@ -146,13 +146,29 @@
             <div class="control-row">
                 <label for="accompanimentStyle">Accompaniment Rhythm</label>
                 <select id="accompanimentStyle">
-                    <option value="broken" selected>Broken Arpeggio (Flowing Motion)</option>
+                    <option value="broken" selected>Broken Arpeggio (8th Flow)</option>
                     <option value="bounce">Bass-Chord Alternating (Drive)</option>
-                    <option value="block">Sustained Block Chords</option>
+                    <option value="block">Sustained Whole Block Chords</option>
+                    <option value="staccato">Staccato Driving Eighths</option>
+                    <option value="offbeat">Off-Beat Skank / Chops</option>
+                    <option value="wave16">16th-Note Fast Arp Wave</option>
+                    <option value="subPulse">Quarter Note Bass Pulse</option>
                 </select>
             </div>
 
-            <h2>4. Song Structure & Pitch Registers</h2>
+            <h2>4. Melody Rhythmic Movement Options</h2>
+            <div class="control-row">
+                <label for="melodyStyle">Melody Motion</label>
+                <select id="melodyStyle">
+                    <option value="syncopated" selected>Syncopated & Grooving</option>
+                    <option value="driving">Driving Eighth Notes</option>
+                    <option value="virtuoso">16th-Note Fast Runs</option>
+                    <option value="ambient">Ambient Half-Notes (Long Holds)</option>
+                    <option value="sparse">Sparse & Expressive</option>
+                </select>
+            </div>
+
+            <h2>5. Structure & Scale Registers</h2>
             <div class="control-row">
                 <label for="numBars">Total Bars</label>
                 <select id="numBars">
@@ -177,7 +193,7 @@
                 </select>
             </div>
 
-            <h2>5. Playback & Direct MIDI Export</h2>
+            <h2>6. Playback & Direct MIDI Export</h2>
             <div class="control-row">
                 <label for="bpm">BPM</label>
                 <input type="range" id="bpm" min="60" max="160" value="110">
@@ -192,7 +208,7 @@
                 <button id="exportMidiBtn" class="success">💾 Download MIDI File</button>
             </div>
             <div id="midiFallbackContainer">
-                Download blocked? <a id="directDownloadLink" href="#" download="sequence.mid">Click here to manually save MIDI</a>
+                Direct Link: <a id="directDownloadLink" href="#" download="sequence.mid">Click to Save MIDI File</a>
             </div>
         </div>
 
@@ -267,7 +283,8 @@
                 row.innerHTML = `
                     <span class="chord-name-lbl">Bar ${idx + 1}: ${chord.name}</span>
                     <div class="chord-controls-group">
-                        <select id="boxes-sel-${idx}" title="Lead Boxes (Notes per Bar)">
+                        <select id="boxes-sel-${idx}" title="Purple Lead Boxes">
+                            <option value="1" ${currentBoxes === '1' ? 'selected' : ''}>1 Box</option>
                             <option value="2" ${currentBoxes === '2' ? 'selected' : ''}>2 Boxes</option>
                             <option value="3" ${currentBoxes === '3' ? 'selected' : ''}>3 Boxes</option>
                             <option value="4" ${currentBoxes === '4' ? 'selected' : ''}>4 Boxes</option>
@@ -419,6 +436,7 @@
             const chordOct = parseInt(document.getElementById('chordOctave').value);
             const scaleFilter = document.getElementById('scaleFilter').value;
             const accomStyle = document.getElementById('accompanimentStyle').value;
+            const melodyStyle = document.getElementById('melodyStyle').value;
 
             generatedSequence = [];
             const streamLog = document.getElementById('streamLog');
@@ -456,7 +474,25 @@
                     generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 2, durationSteps: 2 });
                     generatedSequence.push({ type: 'chord', notes: [rootMidi + 12], step: barStartStep + 4, durationSteps: 2 });
                     generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + 6, durationSteps: 2 });
+                } else if (accomStyle === 'staccato') {
+                    for (let s = 0; s < 8; s++) {
+                        generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + s, durationSteps: 0.5 });
+                    }
+                } else if (accomStyle === 'offbeat') {
+                    for (let s = 1; s < 8; s += 2) {
+                        generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep + s, durationSteps: 0.8 });
+                    }
+                } else if (accomStyle === 'wave16') {
+                    for (let s = 0; s < 16; s++) {
+                        const noteToPlay = chordMidis[s % chordMidis.length];
+                        generatedSequence.push({ type: 'chord', notes: [noteToPlay], step: barStartStep + (s * 0.5), durationSteps: 0.4 });
+                    }
+                } else if (accomStyle === 'subPulse') {
+                    for (let s = 0; s < 8; s += 2) {
+                        generatedSequence.push({ type: 'chord', notes: [rootMidi], step: barStartStep + s, durationSteps: 1.5 });
+                    }
                 } else {
+                    // Block Chords
                     generatedSequence.push({ type: 'chord', notes: chordMidis, step: barStartStep, durationSteps: 8 });
                 }
 
@@ -478,7 +514,6 @@
                     targetVoices = parseInt(chordCustom.voices);
                 }
 
-                // Determine step positions based on selected box count
                 const validPitches = getRegisterScalePitches(chord, minMidi, maxMidi, scaleFilter);
                 const stepInterval = 8 / boxCount;
 
@@ -504,7 +539,11 @@
                         if (harmIdx3 >= 0 && harmIdx3 < validPitches.length) noteStack.push(validPitches[harmIdx3]);
                     }
 
-                    generatedSequence.push({ type: 'melody', notes: noteStack, step: stepPos, durationSteps: stepInterval * 0.9 });
+                    let durationFactor = 0.9;
+                    if (melodyStyle === 'ambient') durationFactor = 1.8;
+                    else if (melodyStyle === 'virtuoso') durationFactor = 0.5;
+
+                    generatedSequence.push({ type: 'melody', notes: noteStack, step: stepPos, durationSteps: stepInterval * durationFactor });
 
                     if (contentEl) {
                         const tag = document.createElement('span');
@@ -589,19 +628,19 @@
             const base64Data = window.btoa(binary);
             const dataUri = 'data:audio/midi;base64,' + base64Data;
 
-            // Method 1: Programmatic anchor trigger
+            // Trigger Download Anchor
             const a = document.createElement('a');
             a.href = dataUri;
-            a.download = `markov_v20_${numBars}bars.mid`;
+            a.download = `markov_v21_${numBars}bars.mid`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
 
-            // Method 2: Display persistent explicit link in UI in case browser blocks programmatic trigger
+            // Display fallback direct link box below buttons
             const fallbackContainer = document.getElementById('midiFallbackContainer');
             const fallbackLink = document.getElementById('directDownloadLink');
             fallbackLink.href = dataUri;
-            fallbackLink.download = `markov_v20_${numBars}bars.mid`;
+            fallbackLink.download = `markov_v21_${numBars}bars.mid`;
             fallbackContainer.style.display = 'block';
         });
 
