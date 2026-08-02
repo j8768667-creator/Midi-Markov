@@ -181,7 +181,7 @@
 
         .stream-log {
             min-height: 140px;
-            max-height: 260px;
+            max-height: 320px;
             background: #08090b;
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -323,6 +323,8 @@
                     <option value="4" selected>4 Bars</option>
                     <option value="8">8 Bars</option>
                     <option value="16">16 Bars</option>
+                    <option value="32">32 Bars</option>
+                    <option value="64">64 Bars</option>
                 </select>
             </div>
 
@@ -333,7 +335,7 @@
             </div>
 
             <div class="control-row">
-                <label for="harmonicFlow">Harmonic Flow</label>
+                <label for="harmonicFlow">Harmonic Flow Logic</label>
                 <select id="harmonicFlow">
                     <option value="strict" selected>Balanced Flow (Functional)</option>
                     <option value="free">Free Markov (Pure Input)</option>
@@ -349,9 +351,9 @@
             </div>
 
             <div class="control-row">
-                <label for="randomness">Creativity / Chaos</label>
-                <input type="range" id="randomness" min="0" max="100" value="25">
-                <span class="val-disp" id="randomVal">25%</span>
+                <label for="randomness">Creativity / Variation</label>
+                <input type="range" id="randomness" min="0" max="100" value="35">
+                <span class="val-disp" id="randomVal">35%</span>
             </div>
 
             <div class="btn-group">
@@ -397,10 +399,15 @@
     <script>
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         let audioCtx = null;
+        let activeOscillators = [];
 
         function ensureAudioContext() {
-            if (!audioCtx) audioCtx = new AudioContext();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
         }
 
         const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -414,7 +421,6 @@
         };
 
         function clampMidiPitch(midi, minMidi = 36, maxMidi = 84) {
-            let noteClass = midi % 12;
             while (midi < minMidi) midi += 12;
             while (midi > maxMidi) midi -= 12;
             return midi;
@@ -433,7 +439,6 @@
             const rootIndex = NOTE_NAMES.indexOf(rootStr);
             if (rootIndex === -1) return null;
 
-            // Enforce selected octave
             const rootMidi = (targetOctave + 1) * 12 + rootIndex;
             let quality = match[2].toUpperCase();
             let intervals = CHORD_FORMULAS[quality] || CHORD_FORMULAS[""];
@@ -524,17 +529,26 @@
             }
         }
 
-        function predictNextToken() {
+        function predictNextToken(lastToken = null) {
             const order = parseInt(document.getElementById('order').value);
             const randomnessPct = parseInt(document.getElementById('randomness').value) / 100;
+            const useFlowLogic = document.getElementById('harmonicFlow').value === 'strict';
 
             let currentState = playedHistory.slice(-order).join(',');
             let possibleNext = markovChain[currentState];
 
             if (!possibleNext || Math.random() < randomnessPct) {
                 if (parsedChordBank.length > 0) {
-                    const pickedNotes = parsedChordBank[Math.floor(Math.random() * parsedChordBank.length)];
-                    return [...pickedNotes].sort((a,b)=>a-b).join('-');
+                    let candidate = parsedChordBank[Math.floor(Math.random() * parsedChordBank.length)];
+                    // Prevent immediate repetition in flow mode
+                    if (useFlowLogic && lastToken && parsedChordBank.length > 1) {
+                        let attempts = 0;
+                        while (candidate.join('-') === lastToken && attempts < 10) {
+                            candidate = parsedChordBank[Math.floor(Math.random() * parsedChordBank.length)];
+                            attempts++;
+                        }
+                    }
+                    return [...candidate].sort((a,b)=>a-b).join('-');
                 }
                 const keys = Object.keys(markovChain);
                 if (keys.length === 0) return "60-64-67";
@@ -542,19 +556,38 @@
                 possibleNext = markovChain[randomState];
             }
 
-            const choices = [];
+            const weightedChoices = [];
             for (const [tok, count] of Object.entries(possibleNext)) {
-                for (let i = 0; i < count; i++) choices.push(tok);
+                let weight = count;
+
+                if (useFlowLogic && lastToken) {
+                    if (tok === lastToken) {
+                        weight *= 0.2; // Heavily penalize repeating the exact same chord back-to-back
+                    } else {
+                        const prevRoot = parseInt(lastToken.split('-')[0]) % 12;
+                        const currRoot = parseInt(tok.split('-')[0]) % 12;
+                        const diff = Math.abs(currRoot - prevRoot);
+
+                        // Reward circle of fifths (7 or 5 semitones) and stepwise moves (1 or 2 semitones)
+                        if (diff === 7 || diff === 5 || diff === 2 || diff === 1) {
+                            weight *= 2.5;
+                        }
+                    }
+                }
+
+                for (let i = 0; i < Math.max(1, Math.round(weight)); i++) {
+                    weightedChoices.push(tok);
+                }
             }
 
-            if (choices.length === 0) {
+            if (weightedChoices.length === 0) {
                 if (parsedChordBank.length > 0) {
                     return [...parsedChordBank[0]].sort((a,b)=>a-b).join('-');
                 }
                 return "60-64-67";
             }
 
-            return choices[Math.floor(Math.random() * choices.length)];
+            return weightedChoices[Math.floor(Math.random() * weightedChoices.length)];
         }
 
         function generateAISequence() {
@@ -571,6 +604,7 @@
             streamLogEl.innerHTML = '';
 
             const totalSteps = numBars * 2;
+            let lastTokenStr = null;
 
             for (let step = 0; step < totalSteps; step++) {
                 if (step % 2 === 0) {
@@ -580,10 +614,11 @@
                     streamLogEl.appendChild(barMarker);
                 }
 
-                const tokenStr = predictNextToken();
+                const tokenStr = predictNextToken(lastTokenStr);
+                lastTokenStr = tokenStr;
+
                 let tokenNotes = tokenStr.split('-').map(n => parseInt(n));
 
-                // Hard clamp notes to configured octave ranges
                 let chordNotes = tokenNotes.map(n => clampMidiPitch((n % 12) + (chordOct + 1) * 12, 36, 80));
                 let melodyPitch = clampMidiPitch((chordNotes[chordNotes.length - 1] % 12) + (melOct + 1) * 12, 48, 84);
 
@@ -623,7 +658,7 @@
             streamLogEl.appendChild(tag);
         }
 
-        // Web Audio Asynchronous Scheduler (Prevents Browser Freezing)
+        // Reliable Audio Preview with Instant Kill Switch
         function togglePlayPreview() {
             if (isPreviewPlaying) {
                 stopPlayback();
@@ -650,7 +685,6 @@
                 const stepItems = generatedSequence.filter(s => s.step === step);
                 const stepTime = startTime + (step * stepSec);
 
-                // Audio Event Scheduling
                 stepItems.forEach(item => {
                     item.notes.forEach(midi => {
                         const osc = audioCtx.createOscillator();
@@ -669,10 +703,11 @@
                         gain.connect(audioCtx.destination);
                         osc.start(stepTime);
                         osc.stop(stepTime + dur);
+
+                        activeOscillators.push(osc);
                     });
                 });
 
-                // UI Highlight Scheduling
                 const delayMs = (stepTime - audioCtx.currentTime) * 1000;
                 const timer = setTimeout(() => {
                     if (!isPreviewPlaying) return;
@@ -690,12 +725,122 @@
 
         function stopPlayback() {
             isPreviewPlaying = false;
+            
+            // Clear scheduled timers
             playTimeouts.forEach(t => clearTimeout(t));
             playTimeouts = [];
+
+            // Stop all active audio oscillators instantly
+            activeOscillators.forEach(osc => {
+                try { osc.stop(); osc.disconnect(); } catch(e) {}
+            });
+            activeOscillators = [];
+
+            if (audioCtx) {
+                audioCtx.suspend();
+            }
+
             document.getElementById('playPreviewBtn').classList.remove('playing');
             document.getElementById('playPreviewBtn').innerText = "▶ Play Preview";
             document.querySelectorAll('.note-tag').forEach(t => t.classList.remove('active-playing'));
         }
+
+        // Correct Standard MIDI Writer
+        function writeVarLen(val) {
+            let buffer = val & 0x7F;
+            const bytes = [];
+            while ((val >>= 7)) {
+                buffer <<= 8;
+                buffer |= (val & 0x7F) | 0x80;
+            }
+            while (true) {
+                bytes.push(buffer & 0xFF);
+                if (buffer & 0x80) buffer >>= 8;
+                else break;
+            }
+            return bytes;
+        }
+
+        document.getElementById('exportMidiBtn').addEventListener('click', () => {
+            if (generatedSequence.length === 0) {
+                alert("No sequence generated to export. Click 'Generate AI Bars' first.");
+                return;
+            }
+
+            const bpm = parseInt(document.getElementById('bpm').value);
+            const microsecondsPerQuarter = Math.round(60000000 / bpm);
+
+            const track1Events = [
+                0x00, 0xFF, 0x51, 0x03, 
+                (microsecondsPerQuarter >> 16) & 0xFF, 
+                (microsecondsPerQuarter >> 8) & 0xFF, 
+                microsecondsPerQuarter & 0xFF,
+                0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08,
+                0x00, 0xFF, 0x2F, 0x00
+            ];
+
+            let track2Events = [
+                0x00, 0xFF, 0x03, 0x09, ...Array.from("Markov AI").map(c => c.charCodeAt(0))
+            ];
+
+            const sortedItems = [...generatedSequence].sort((a,b) => a.step - b.step);
+            let currentTick = 0;
+
+            sortedItems.forEach(item => {
+                const targetTick = item.step * 192; // 192 ticks per step
+                let deltaTicks = Math.max(0, targetTick - currentTick);
+
+                const deltaBytes = writeVarLen(deltaTicks);
+                const channel = item.type === 'chord' ? 0x01 : 0x00;
+
+                item.notes.forEach((note, idx) => {
+                    const d = idx === 0 ? deltaBytes : [0x00];
+                    track2Events.push(...d, 0x90 | channel, note, 0x64);
+                });
+
+                const durationDelta = writeVarLen(192);
+                item.notes.forEach((note, idx) => {
+                    const d = idx === 0 ? durationDelta : [0x00];
+                    track2Events.push(...d, 0x80 | channel, note, 0x00);
+                });
+
+                currentTick = targetTick + 192;
+            });
+
+            track2Events.push(0x00, 0xFF, 0x2F, 0x00);
+
+            function buildChunk(type, events) {
+                const len = events.length;
+                return [
+                    ...type.split('').map(c => c.charCodeAt(0)),
+                    (len >> 24) & 0xFF, (len >> 16) & 0xFF, (len >> 8) & 0xFF, len & 0xFF,
+                    ...events
+                ];
+            }
+
+            const headerChunk = [
+                0x4D, 0x54, 0x68, 0x64,
+                0x00, 0x00, 0x00, 0x06,
+                0x00, 0x01,
+                0x00, 0x02,
+                0x00, 0x60
+            ];
+
+            const fullFile = new Uint8Array([
+                ...headerChunk,
+                ...buildChunk("MTrk", track1Events),
+                ...buildChunk("MTrk", track2Events)
+            ]);
+
+            const blob = new Blob([fullFile], { type: "audio/midi" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `markov_harmonic_sequence_${bpm}bpm.mid`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        });
 
         function updateMatrixUI() {
             const states = Object.keys(markovChain);
