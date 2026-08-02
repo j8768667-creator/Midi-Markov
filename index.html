@@ -180,8 +180,8 @@
         }
 
         .stream-log {
-            min-height: 140px;
-            max-height: 320px;
+            min-height: 180px;
+            max-height: 380px;
             background: #08090b;
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -196,15 +196,31 @@
             flex-wrap: wrap;
         }
 
-        .bar-badge {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px dashed var(--border);
-            color: var(--text-dim);
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
+        .bar-container {
             width: 100%;
-            margin-top: 4px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .bar-title {
+            color: var(--accent-cyan);
+            font-size: 0.75rem;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 4px;
+        }
+
+        .bar-content {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            align-items: center;
         }
 
         .note-tag {
@@ -213,7 +229,7 @@
             padding: 6px 10px;
             border-radius: 6px;
             font-weight: bold;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             display: inline-flex;
             flex-direction: column;
             gap: 2px;
@@ -387,7 +403,7 @@
                 <button id="saveJsonBtn">Save Model</button>
             </div>
             <div class="btn-group">
-                <button id="clearModelBtn" class="danger">Clear Model Data</button>
+                <button id="clearModelBtn" class="danger">Clear Model & Input</button>
             </div>
         </div>
 
@@ -412,16 +428,16 @@
     </div>
 
     <script>
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
         let audioCtx = null;
         let activeOscillators = [];
 
-        async function ensureAudioContext() {
+        function initAudioEngine() {
             if (!audioCtx) {
-                audioCtx = new AudioContext();
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContextClass();
             }
             if (audioCtx.state === 'suspended') {
-                await audioCtx.resume();
+                audioCtx.resume();
             }
         }
 
@@ -488,6 +504,7 @@
         const matrixTableEl = document.getElementById('matrixTable');
         const statusBadgeEl = document.getElementById('statusBadge');
         const accompanyModeSelect = document.getElementById('accompanyMode');
+        const manualTextInput = document.getElementById('manualTextInput');
 
         function updateAccompanimentOptions() {
             const target = document.getElementById('inputTarget').value;
@@ -521,7 +538,7 @@
         }
 
         function parseInputChords() {
-            const rawText = document.getElementById('manualTextInput').value.trim();
+            const rawText = manualTextInput.value.trim();
             if (!rawText) return;
 
             const baseOctave = parseInt(document.getElementById('chordOctave').value);
@@ -604,7 +621,6 @@
             return weightedChoices[Math.floor(Math.random() * weightedChoices.length)];
         }
 
-        // Full Scale Generator for Smooth Melodies
         function getScalePitches(rootMidi, octave) {
             const baseRoot = (rootMidi % 12) + (octave + 1) * 12;
             const pitches = [];
@@ -631,21 +647,33 @@
             generatedSequence = [];
             streamLogEl.innerHTML = '';
 
-            const stepsPerBar = 8; // 8 steps per bar (eighth note resolution)
+            const stepsPerBar = 8;
             const totalSteps = numBars * stepsPerBar;
             let lastTokenStr = null;
             let lastMelodyPitch = null;
 
-            // Step 1: Generate Sustained Chords
-            for (let step = 0; step < totalSteps; step += chordStepDuration) {
-                const barNum = Math.floor(step / stepsPerBar) + 1;
+            // Step 1: Generate Chords & Create Bar Containers
+            const barContainers = [];
+            for (let b = 0; b < numBars; b++) {
+                const barBox = document.createElement('div');
+                barBox.className = 'bar-container';
                 
-                if (step % stepsPerBar === 0) {
-                    const barMarker = document.createElement('div');
-                    barMarker.className = 'bar-badge';
-                    barMarker.innerText = `Bar ${barNum}`;
-                    streamLogEl.appendChild(barMarker);
-                }
+                const title = document.createElement('div');
+                title.className = 'bar-title';
+                title.innerText = `BAR ${b + 1}`;
+                
+                const content = document.createElement('div');
+                content.className = 'bar-content';
+                content.id = `bar-content-${b}`;
+                
+                barBox.appendChild(title);
+                barBox.appendChild(content);
+                streamLogEl.appendChild(barBox);
+                barContainers.push(content);
+            }
+
+            for (let step = 0; step < totalSteps; step += chordStepDuration) {
+                const barIdx = Math.floor(step / stepsPerBar);
 
                 const tokenStr = predictNextToken(lastTokenStr);
                 lastTokenStr = tokenStr;
@@ -668,70 +696,72 @@
                         strumOffsetMs: Math.round((Math.random() * 18 + 10) * humanizeVal)
                     });
 
-                    renderTag(chordNotes, true, true, step);
+                    renderTagToBar(barContainers[barIdx], chordNotes, true, true, step);
                 }
             }
 
-            // Step 2: Generate Flowing Diatonic Melody
+            // Step 2: Generate Flowing Bar-by-Bar Melody
             if (accompanyMode === 'melody_only' || accompanyMode === 'chords_melody' || accompanyMode === 'melody_chords') {
-                let melStep = 0;
+                for (let barIdx = 0; barIdx < numBars; barIdx++) {
+                    const barStartStep = barIdx * stepsPerBar;
+                    const barEndStep = barStartStep + stepsPerBar;
+                    let melStep = barStartStep;
 
-                while (melStep < totalSteps) {
-                    const durChoices = [2, 2, 3, 4]; // Quarter, Dotted Quarter, Half Notes
-                    const noteDurSteps = durChoices[Math.floor(Math.random() * durChoices.length)];
+                    while (melStep < barEndStep) {
+                        const durChoices = [2, 2, 4]; // Eighth & Quarter notes
+                        const noteDurSteps = durChoices[Math.floor(Math.random() * durChoices.length)];
+                        const actualDur = Math.min(noteDurSteps, barEndStep - melStep);
 
-                    const activeChordObj = generatedSequence.find(s => s.type === 'chord' && melStep >= s.step && melStep < (s.step + s.durationSteps));
-                    const currentChordRoot = activeChordObj ? activeChordObj.notes[0] : 60;
-                    
-                    const scalePitches = getScalePitches(currentChordRoot, melOct);
-
-                    let selectedMelodyPitch;
-                    if (lastMelodyPitch !== null) {
-                        // Find closest step-wise pitch
-                        const closestIndex = scalePitches.reduce((bestIdx, currPitch, idx) => {
-                            return Math.abs(currPitch - lastMelodyPitch) < Math.abs(scalePitches[bestIdx] - lastMelodyPitch) ? idx : bestIdx;
-                        }, 0);
-
-                        // Movement bias: Step +1, -1, or hold (small intervals)
-                        const stepOffsets = [-2, -1, -1, 0, 1, 1, 2];
-                        const chosenOffset = stepOffsets[Math.floor(Math.random() * stepOffsets.length)];
-                        const targetIdx = Math.max(0, Math.min(scalePitches.length - 1, closestIndex + chosenOffset));
+                        const activeChordObj = generatedSequence.find(s => s.type === 'chord' && melStep >= s.step && melStep < (s.step + s.durationSteps));
+                        const currentChordRoot = activeChordObj ? activeChordObj.notes[0] : 60;
                         
-                        selectedMelodyPitch = scalePitches[targetIdx];
+                        const scalePitches = getScalePitches(currentChordRoot, melOct);
 
-                        // Prevent 3x repeat of identical note
-                        if (selectedMelodyPitch === lastMelodyPitch && Math.random() < 0.7) {
-                            const shift = Math.random() < 0.5 ? 1 : -1;
-                            const adjustedIdx = Math.max(0, Math.min(scalePitches.length - 1, targetIdx + shift));
-                            selectedMelodyPitch = scalePitches[adjustedIdx];
+                        let selectedMelodyPitch;
+                        if (lastMelodyPitch !== null) {
+                            const closestIndex = scalePitches.reduce((bestIdx, currPitch, idx) => {
+                                return Math.abs(currPitch - lastMelodyPitch) < Math.abs(scalePitches[bestIdx] - lastMelodyPitch) ? idx : bestIdx;
+                            }, 0);
+
+                            const stepOffsets = [-2, -1, -1, 0, 1, 1, 2];
+                            const chosenOffset = stepOffsets[Math.floor(Math.random() * stepOffsets.length)];
+                            const targetIdx = Math.max(0, Math.min(scalePitches.length - 1, closestIndex + chosenOffset));
+                            
+                            selectedMelodyPitch = scalePitches[targetIdx];
+
+                            if (selectedMelodyPitch === lastMelodyPitch && Math.random() < 0.7) {
+                                const shift = Math.random() < 0.5 ? 1 : -1;
+                                const adjustedIdx = Math.max(0, Math.min(scalePitches.length - 1, targetIdx + shift));
+                                selectedMelodyPitch = scalePitches[adjustedIdx];
+                            }
+                        } else {
+                            selectedMelodyPitch = scalePitches[Math.floor(Math.random() * scalePitches.length)];
                         }
-                    } else {
-                        selectedMelodyPitch = scalePitches[Math.floor(Math.random() * scalePitches.length)];
+
+                        lastMelodyPitch = selectedMelodyPitch;
+
+                        const melVel = melStep % 8 === 0 ? 102 : 88;
+                        const velRange = Math.round(16 * humanizeVal);
+
+                        generatedSequence.push({
+                            type: 'melody',
+                            notes: [selectedMelodyPitch],
+                            step: melStep,
+                            durationSteps: actualDur,
+                            velocities: [Math.min(127, Math.max(50, melVel + Math.floor((Math.random() - 0.5) * velRange)))],
+                            timingOffsetMs: Math.round((Math.random() - 0.5) * 16 * humanizeVal)
+                        });
+
+                        renderTagToBar(barContainers[barIdx], [selectedMelodyPitch], true, false, melStep);
+                        melStep += actualDur;
                     }
-
-                    lastMelodyPitch = selectedMelodyPitch;
-
-                    const melVel = melStep % 8 === 0 ? 102 : 88;
-                    const velRange = Math.round(16 * humanizeVal);
-
-                    generatedSequence.push({
-                        type: 'melody',
-                        notes: [selectedMelodyPitch],
-                        step: melStep,
-                        durationSteps: Math.min(noteDurSteps, totalSteps - melStep),
-                        velocities: [Math.min(127, Math.max(50, melVel + Math.floor((Math.random() - 0.5) * velRange)))],
-                        timingOffsetMs: Math.round((Math.random() - 0.5) * 16 * humanizeVal)
-                    });
-
-                    renderTag([selectedMelodyPitch], true, false, melStep);
-                    melStep += noteDurSteps;
                 }
             }
 
             statusBadgeEl.innerText = `Generated ${numBars} Sustained Bars`;
         }
 
-        function renderTag(midiNotes, isAi = false, isChord = false, step) {
+        function renderTagToBar(barContainer, midiNotes, isAi = false, isChord = false, step) {
             const tag = document.createElement('span');
             tag.className = `note-tag ${isChord ? 'chord' : ''} ${isAi ? 'ai' : ''}`;
             tag.dataset.step = step;
@@ -743,11 +773,13 @@
                 tag.innerHTML = `<span>Melody: ${midiToNoteName(midiNotes[0])}</span>`;
             }
 
-            streamLogEl.appendChild(tag);
+            barContainer.appendChild(tag);
         }
 
         // Web Audio Synthesizer Preview
-        async function togglePlayPreview() {
+        function togglePlayPreview() {
+            initAudioEngine();
+
             if (isPreviewPlaying) {
                 stopPlayback();
                 return;
@@ -758,7 +790,6 @@
                 return;
             }
 
-            await ensureAudioContext();
             isPreviewPlaying = true;
             document.getElementById('playPreviewBtn').classList.add('playing');
             document.getElementById('playPreviewBtn').innerText = "■ Stop Preview";
@@ -824,10 +855,6 @@
                 try { osc.stop(); osc.disconnect(); } catch(e) {}
             });
             activeOscillators = [];
-
-            if (audioCtx) {
-                audioCtx.suspend();
-            }
 
             document.getElementById('playPreviewBtn').classList.remove('playing');
             document.getElementById('playPreviewBtn').innerText = "▶ Play Preview";
@@ -1023,13 +1050,14 @@
 
         document.getElementById('clearModelBtn').addEventListener('click', () => {
             stopPlayback();
+            manualTextInput.value = ''; // Instantly clear text input box
             markovChain = {};
             playedHistory = [];
             parsedChordBank = [];
             generatedSequence = [];
-            streamLogEl.innerHTML = '<span style="color: var(--text-dim); font-size: 0.8rem;">Model cleared. Enter chords or upload files...</span>';
+            streamLogEl.innerHTML = '<span style="color: var(--text-dim); font-size: 0.8rem;">Model & Input text cleared. Enter new chords or upload files...</span>';
             matrixTableEl.innerHTML = '<tbody><tr><td colspan="2" style="color: var(--text-dim);">Matrix empty.</td></tr></tbody>';
-            statusBadgeEl.innerText = "Model Reset";
+            statusBadgeEl.innerText = "Model & Input Reset";
         });
 
         document.getElementById('bpm').addEventListener('input', (e) => {
