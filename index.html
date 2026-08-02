@@ -276,8 +276,8 @@
             </div>
 
             <div class="btn-group">
-                <button id="uploadFileBtn">Upload File (.mid/.json)</button>
-                <input type="file" id="fileInput" accept=".mid,.midi,.json,.txt" style="display:none;">
+                <button id="uploadFileBtn">Upload File (.json)</button>
+                <input type="file" id="fileInput" accept=".json,.txt" style="display:none;">
             </div>
 
             <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
@@ -416,9 +416,13 @@
         let audioCtx = null;
         let activeOscillators = [];
 
-        function ensureAudioContext() {
-            if (!audioCtx) audioCtx = new AudioContext();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+        async function ensureAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
         }
 
         const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -619,55 +623,52 @@
             let lastTokenStr = null;
             let lastMelodyPitch = null;
 
-            for (let step = 0; step < totalSteps; step++) {
+            // Step 1: Generate Chords Pass
+            for (let step = 0; step < totalSteps; step += chordStepDuration) {
+                const barNum = Math.floor(step / stepsPerBar) + 1;
+                
                 if (step % stepsPerBar === 0) {
                     const barMarker = document.createElement('div');
                     barMarker.className = 'bar-badge';
-                    barMarker.innerText = `Bar ${Math.floor(step / stepsPerBar) + 1}`;
+                    barMarker.innerText = `Bar ${barNum}`;
                     streamLogEl.appendChild(barMarker);
                 }
 
-                // Generate Sustained Block Chords
-                if (step % chordStepDuration === 0) {
-                    const tokenStr = predictNextToken(lastTokenStr);
-                    lastTokenStr = tokenStr;
+                const tokenStr = predictNextToken(lastTokenStr);
+                lastTokenStr = tokenStr;
 
-                    let tokenNotes = tokenStr.split('-').map(n => parseInt(n));
-                    let chordNotes = tokenNotes.map(n => clampMidiPitch((n % 12) + (chordOct + 1) * 12, 36, 80));
+                let tokenNotes = tokenStr.split('-').map(n => parseInt(n));
+                let chordNotes = tokenNotes.map(n => clampMidiPitch((n % 12) + (chordOct + 1) * 12, 36, 80));
 
-                    trainMarkovToken(chordNotes);
+                trainMarkovToken(chordNotes);
 
-                    if (accompanyMode === 'chords_only' || accompanyMode === 'chords_melody' || accompanyMode === 'melody_chords') {
-                        const baseVel = 88;
-                        const velRange = Math.round(12 * humanizeVal);
+                if (accompanyMode === 'chords_only' || accompanyMode === 'chords_melody' || accompanyMode === 'melody_chords') {
+                    const baseVel = 88;
+                    const velRange = Math.round(12 * humanizeVal);
 
-                        generatedSequence.push({
-                            type: 'chord',
-                            notes: chordNotes,
-                            step: step,
-                            durationSteps: chordStepDuration,
-                            velocities: chordNotes.map(() => Math.min(127, Math.max(40, baseVel + Math.floor((Math.random() - 0.5) * velRange)))),
-                            strumOffsetMs: Math.round((Math.random() * 18 + 10) * humanizeVal)
-                        });
+                    generatedSequence.push({
+                        type: 'chord',
+                        notes: chordNotes,
+                        step: step,
+                        durationSteps: chordStepDuration,
+                        velocities: chordNotes.map(() => Math.min(127, Math.max(40, baseVel + Math.floor((Math.random() - 0.5) * velRange)))),
+                        strumOffsetMs: Math.round((Math.random() * 18 + 10) * humanizeVal)
+                    });
 
-                        renderTag(chordNotes, true, true, step);
-                    }
+                    renderTag(chordNotes, true, true, step);
                 }
             }
 
-            // Generate Smooth Legato Melody Line
+            // Step 2: Generate Legato Melody Pass
             if (accompanyMode === 'melody_only' || accompanyMode === 'chords_melody' || accompanyMode === 'melody_chords') {
                 let melStep = 0;
                 while (melStep < totalSteps) {
-                    // Decide note duration (quarter note = 2 steps, dotted = 3 steps, half note = 4 steps)
-                    const durChoices = [2, 2, 3, 4];
+                    const durChoices = [2, 2, 3, 4]; // Quarter, Dotted, Half note durations
                     const noteDurSteps = durChoices[Math.floor(Math.random() * durChoices.length)];
 
-                    // Find active chord notes at this step
                     const activeChordObj = generatedSequence.find(s => s.type === 'chord' && melStep >= s.step && melStep < (s.step + s.durationSteps));
                     const currentChordNotes = activeChordObj ? activeChordObj.notes : [60, 64, 67];
 
-                    // Voice Leading: Pick scale tone or neighbor tone within 1-2 semitones
                     let candidatePitches = [];
                     currentChordNotes.forEach(cn => {
                         const basePitch = (cn % 12) + (melOct + 1) * 12;
@@ -720,8 +721,8 @@
             streamLogEl.appendChild(tag);
         }
 
-        // Web Audio Preview
-        function togglePlayPreview() {
+        // Reliable Web Audio Synthesizer Preview
+        async function togglePlayPreview() {
             if (isPreviewPlaying) {
                 stopPlayback();
                 return;
@@ -732,14 +733,14 @@
                 return;
             }
 
-            ensureAudioContext();
+            await ensureAudioContext();
             isPreviewPlaying = true;
             document.getElementById('playPreviewBtn').classList.add('playing');
             document.getElementById('playPreviewBtn').innerText = "■ Stop Preview";
 
             const bpm = parseInt(document.getElementById('bpm').value);
-            const stepSec = (60 / bpm) / 2; // 8th note steps
-            const startTime = audioCtx.currentTime + 0.08;
+            const stepSec = (60 / bpm) / 2; // Eighth note resolution
+            const startTime = audioCtx.currentTime + 0.1;
 
             const maxStep = Math.max(...generatedSequence.map(s => s.step + s.durationSteps));
 
@@ -753,12 +754,13 @@
 
                     const osc = audioCtx.createOscillator();
                     const gain = audioCtx.createGain();
+                    
                     osc.type = item.type === 'chord' ? "triangle" : "sawtooth";
                     osc.frequency.setValueAtTime(midiToFreq(midi), noteStartTime);
 
                     const velGain = ((item.velocities ? item.velocities[idx] : 90) / 127) * (item.type === 'chord' ? 0.12 : 0.18);
 
-                    gain.gain.setValueAtTime(0, noteStartTime);
+                    gain.gain.setValueAtTime(0.0001, noteStartTime);
                     gain.gain.linearRampToValueAtTime(velGain, noteStartTime + 0.02);
                     gain.gain.exponentialRampToValueAtTime(0.0001, noteStartTime + dur);
 
@@ -831,7 +833,7 @@
             ];
         }
 
-        // Multi-Track MIDI Writer with Sustained Duration
+        // Multi-Track MIDI Exporter
         document.getElementById('exportMidiBtn').addEventListener('click', () => {
             if (generatedSequence.length === 0) {
                 alert("No sequence generated to export. Click 'Generate AI Bars' first.");
@@ -841,7 +843,7 @@
             const bpm = parseInt(document.getElementById('bpm').value);
             const microsecondsPerQuarter = Math.round(60000000 / bpm);
             const ticksPerQuarter = 192;
-            const ticksPerStep = ticksPerQuarter / 2; // 96 ticks per step
+            const ticksPerStep = ticksPerQuarter / 2;
 
             const track1Events = [
                 0x00, 0xFF, 0x51, 0x03, 
@@ -864,7 +866,6 @@
                     const targetTick = Math.round(item.step * ticksPerStep + ((item.timingOffsetMs || 0) * (bpm / 60000) * ticksPerQuarter));
                     const durTicks = Math.round((item.durationSteps || 1) * ticksPerStep * 0.95);
 
-                    // Note ON
                     let deltaTicksON = Math.max(0, targetTick - currentTick);
                     item.notes.forEach((note, idx) => {
                         const strumTickOffset = item.type === 'chord' ? Math.round(idx * 4) : 0;
@@ -873,7 +874,6 @@
                         trackEvents.push(...d, 0x90 | channelByte, note, vel);
                     });
 
-                    // Note OFF
                     const deltaBytesOFF = writeVarLen(durTicks);
                     item.notes.forEach((note, idx) => {
                         const d = idx === 0 ? deltaBytesOFF : [0x00];
@@ -909,7 +909,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `markov_sustained_sequence_${bpm}bpm.mid`;
+            a.download = `markov_sequence_${bpm}bpm.mid`;
             document.body.appendChild(a);
             a.click();
             a.remove();
@@ -952,7 +952,38 @@
             return midiToNoteName(parseInt(tokenStr));
         }
 
-        // Event Listeners
+        // File JSON Download & Upload
+        document.getElementById('saveJsonBtn').addEventListener('click', () => {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(markovChain, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "markov_model.json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+
+        const fileInput = document.getElementById('fileInput');
+        document.getElementById('uploadFileBtn').addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    markovChain = JSON.parse(event.target.result);
+                    updateMatrixUI();
+                    statusBadgeEl.innerText = "Model Loaded";
+                } catch(err) {
+                    alert("Invalid JSON file format.");
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // UI Event Listeners
         document.getElementById('addManualBtn').addEventListener('click', parseInputChords);
         document.getElementById('inputTarget').addEventListener('change', updateAccompanimentOptions);
         document.getElementById('generateBtn').addEventListener('click', generateAISequence);
