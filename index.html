@@ -24,6 +24,11 @@
             touch-action: manipulation;
         }
 
+        html, body {
+            overflow-x: hidden;
+            touch-action: pan-y;
+        }
+
         body {
             margin: 0;
             padding: 16px;
@@ -47,7 +52,7 @@
 
         h1 {
             margin: 0;
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             letter-spacing: 0.5px;
             color: var(--accent-cyan);
         }
@@ -81,12 +86,12 @@
             padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 12px;
         }
 
         .panel h2 {
             margin: 0;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: var(--accent-green);
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -146,7 +151,7 @@
             font-weight: 600;
             font-size: 0.82rem;
             cursor: pointer;
-            transition: all 0.15s ease;
+            transition: transform 0.1s ease, background 0.15s ease;
             flex: 1;
             min-width: 100px;
         }
@@ -176,7 +181,7 @@
 
         .stream-log {
             min-height: 140px;
-            max-height: 280px;
+            max-height: 260px;
             background: #08090b;
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -220,7 +225,7 @@
 
         .matrix-container {
             overflow-x: auto;
-            max-height: 240px;
+            max-height: 220px;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: #0d0f12;
@@ -261,10 +266,10 @@
 
     <div class="layout-grid">
         <div class="panel">
-            <h2>1. Input Chords / Melody</h2>
+            <h2>1. Input Progression</h2>
 
             <div class="control-row">
-                <input type="text" id="manualTextInput" value="A, Am, Amaj7, A7, Bm, Bbdim, C#m, D, Dmaj7, Ddim, E, E6, F#m" placeholder="e.g. A, Am, Amaj7, A7, Bm, Bbdim...">
+                <input type="text" id="manualTextInput" value="A, Am, Amaj7, A7, Bm, Bbdim, C#m, D, Dmaj7, Ddim, E, E6, F#m" placeholder="e.g. A, Am, Amaj7, Bm, E...">
             </div>
             <div class="btn-group">
                 <button id="addManualBtn" class="primary">Parse & Train Model</button>
@@ -277,7 +282,25 @@
 
             <hr style="border: 0; border-top: 1px solid var(--border); margin: 2px 0;">
 
-            <h2>2. Generation Setup</h2>
+            <h2>2. Generation & Range Setup</h2>
+
+            <div class="control-row">
+                <label for="chordOctave">Chord Octave Range</label>
+                <select id="chordOctave">
+                    <option value="3">Octave 3 (Low / Warm)</option>
+                    <option value="4" selected>Octave 4 (Mid Range)</option>
+                    <option value="5">Octave 5 (Bright)</option>
+                </select>
+            </div>
+
+            <div class="control-row">
+                <label for="melodyOctave">Melody Octave Range</label>
+                <select id="melodyOctave">
+                    <option value="4">Octave 4 (Mid Range)</option>
+                    <option value="5" selected>Octave 5 (Lead Voice)</option>
+                    <option value="6">Octave 6 (High)</option>
+                </select>
+            </div>
 
             <div class="control-row">
                 <label for="inputTarget">Generation Target</label>
@@ -289,8 +312,7 @@
 
             <div class="control-row">
                 <label for="accompanyMode">Accompaniment</label>
-                <select id="accompanyMode">
-                    </select>
+                <select id="accompanyMode"></select>
             </div>
 
             <div class="control-row">
@@ -301,7 +323,6 @@
                     <option value="4" selected>4 Bars</option>
                     <option value="8">8 Bars</option>
                     <option value="16">16 Bars</option>
-                    <option value="32">32 Bars</option>
                 </select>
             </div>
 
@@ -312,7 +333,7 @@
             </div>
 
             <div class="control-row">
-                <label for="harmonicFlow">Harmonic Flow / Logic</label>
+                <label for="harmonicFlow">Harmonic Flow</label>
                 <select id="harmonicFlow">
                     <option value="strict" selected>Balanced Flow (Functional)</option>
                     <option value="free">Free Markov (Pure Input)</option>
@@ -385,53 +406,42 @@
         const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
         const CHORD_FORMULAS = {
-            "": [0, 4, 7],               // Major
-            "M": [0, 4, 7],
-            "MAJ": [0, 4, 7],
-            "MIN": [0, 3, 7],            // Minor
-            "M": [0, 3, 7],
-            "7": [0, 4, 7, 10],          // Dominant 7th
-            "MAJ7": [0, 4, 7, 11],        // Major 7th
-            "M7": [0, 3, 7, 10],         // Minor 7th
-            "MIN7": [0, 3, 7, 10],
-            "DIM": [0, 3, 6],            // Diminished
-            "°": [0, 3, 6],
-            "DIM7": [0, 3, 6, 9],        // Diminished 7th
-            "M7B5": [0, 3, 6, 10],       // Half-Diminished
-            "AUG": [0, 4, 8],            // Augmented
-            "+": [0, 4, 8],
-            "6": [0, 4, 7, 9],           // Major 6th
-            "M6": [0, 3, 7, 9],          // Minor 6th
-            "SUS2": [0, 2, 7],
-            "SUS4": [0, 5, 7],
-            "9": [0, 4, 7, 10, 14],       // Dominant 9th
-            "MAJ9": [0, 4, 7, 11, 14],   // Major 9th
-            "M9": [0, 3, 7, 10, 14]      // Minor 9th
+            "": [0, 4, 7], "M": [0, 4, 7], "MAJ": [0, 4, 7],
+            "MIN": [0, 3, 7], "M": [0, 3, 7],
+            "7": [0, 4, 7, 10], "MAJ7": [0, 4, 7, 11], "M7": [0, 3, 7, 10],
+            "DIM": [0, 3, 6], "°": [0, 3, 6], "DIM7": [0, 3, 6, 9],
+            "AUG": [0, 4, 8], "6": [0, 4, 7, 9], "M6": [0, 3, 7, 9]
         };
 
-        function parseChordSymbolToMidi(chordStr) {
+        function clampMidiPitch(midi, minMidi = 36, maxMidi = 84) {
+            let noteClass = midi % 12;
+            while (midi < minMidi) midi += 12;
+            while (midi > maxMidi) midi -= 12;
+            return midi;
+        }
+
+        function parseChordSymbolToMidi(chordStr, targetOctave = 4) {
             let cleanStr = chordStr.trim().replace(/\s+/g, '');
             if (!cleanStr) return null;
 
             cleanStr = cleanStr.replace(/Db/g, 'C#').replace(/Eb/g, 'D#').replace(/Gb/g, 'F#').replace(/Ab/g, 'G#').replace(/Bb/g, 'A#');
 
-            const match = cleanStr.match(/^([A-G]#?)(-?\d+)?(.*)$/i);
+            const match = cleanStr.match(/^([A-G]#?)(.*)$/i);
             if (!match) return null;
 
             let rootStr = match[1].toUpperCase();
             const rootIndex = NOTE_NAMES.indexOf(rootStr);
             if (rootIndex === -1) return null;
 
-            const octave = match[2] ? parseInt(match[2]) : 4;
-            const rootMidi = (octave + 1) * 12 + rootIndex;
-
-            let quality = match[3].toUpperCase();
+            // Enforce selected octave
+            const rootMidi = (targetOctave + 1) * 12 + rootIndex;
+            let quality = match[2].toUpperCase();
             let intervals = CHORD_FORMULAS[quality] || CHORD_FORMULAS[""];
 
             return {
                 name: chordStr.trim(),
                 rootMidi: rootMidi,
-                midiNotes: intervals.map(i => rootMidi + i)
+                midiNotes: intervals.map(i => clampMidiPitch(rootMidi + i, 36, 84))
             };
         }
 
@@ -448,10 +458,10 @@
         // Global State
         let markovChain = {};
         let playedHistory = [];
-        let parsedChordBank = []; 
-        let generatedSequence = []; 
+        let parsedChordBank = [];
+        let generatedSequence = [];
         let isPreviewPlaying = false;
-        let playTimers = [];
+        let playTimeouts = [];
 
         const streamLogEl = document.getElementById('streamLog');
         const matrixTableEl = document.getElementById('matrixTable');
@@ -493,13 +503,14 @@
             const rawText = document.getElementById('manualTextInput').value.trim();
             if (!rawText) return;
 
+            const baseOctave = parseInt(document.getElementById('chordOctave').value);
             const chordTokens = rawText.split(',');
             playedHistory = [];
             parsedChordBank = [];
             let addedCount = 0;
 
             chordTokens.forEach(token => {
-                const parsed = parseChordSymbolToMidi(token);
+                const parsed = parseChordSymbolToMidi(token, baseOctave);
                 if (parsed) {
                     parsedChordBank.push(parsed.midiNotes);
                     trainMarkovToken(parsed.midiNotes);
@@ -510,20 +521,16 @@
             if (addedCount > 0) {
                 updateMatrixUI();
                 statusBadgeEl.innerText = `Trained Model (${addedCount} Chords)`;
-            } else {
-                alert("Could not parse input chords.");
             }
         }
 
         function predictNextToken() {
             const order = parseInt(document.getElementById('order').value);
             const randomnessPct = parseInt(document.getElementById('randomness').value) / 100;
-            const useFlowLogic = document.getElementById('harmonicFlow').value === 'strict';
 
             let currentState = playedHistory.slice(-order).join(',');
             let possibleNext = markovChain[currentState];
 
-            // If state isn't recognized or randomness triggers, sample randomly from parsed bank or existing states
             if (!possibleNext || Math.random() < randomnessPct) {
                 if (parsedChordBank.length > 0) {
                     const pickedNotes = parsedChordBank[Math.floor(Math.random() * parsedChordBank.length)];
@@ -537,20 +544,7 @@
 
             const choices = [];
             for (const [tok, count] of Object.entries(possibleNext)) {
-                let weight = count;
-
-                if (useFlowLogic && currentState) {
-                    const lastNotes = currentState.split(',').pop().split('-').map(n=>parseInt(n));
-                    const candNotes = tok.split('-').map(n=>parseInt(n));
-                    
-                    // Voice leading distance
-                    const rootDiff = Math.abs((candNotes[0] % 12) - (lastNotes[0] % 12));
-                    if (rootDiff === 7 || rootDiff === 5 || rootDiff === 2 || rootDiff === 1) {
-                        weight *= 3; // Heavily favor smooth resolution & circle of fifths
-                    }
-                }
-
-                for (let i = 0; i < weight; i++) choices.push(tok);
+                for (let i = 0; i < count; i++) choices.push(tok);
             }
 
             if (choices.length === 0) {
@@ -563,27 +557,6 @@
             return choices[Math.floor(Math.random() * choices.length)];
         }
 
-        function synthPlayNotes(midiNotes, durationSec = 0.5, volume = 0.2) {
-            ensureAudioContext();
-            midiNotes.forEach(midi => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-
-                osc.type = "triangle";
-                osc.frequency.setValueAtTime(midiToFreq(midi), audioCtx.currentTime);
-
-                gain.gain.setValueAtTime(0, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.02);
-                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + durationSec);
-
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-
-                osc.start();
-                osc.stop(audioCtx.currentTime + durationSec);
-            });
-        }
-
         function generateAISequence() {
             if (Object.keys(markovChain).length === 0 && parsedChordBank.length === 0) {
                 parseInputChords();
@@ -591,11 +564,13 @@
 
             const numBars = parseInt(document.getElementById('numBars').value);
             const accompanyMode = accompanyModeSelect.value;
-            
+            const chordOct = parseInt(document.getElementById('chordOctave').value);
+            const melOct = parseInt(document.getElementById('melodyOctave').value);
+
             generatedSequence = [];
             streamLogEl.innerHTML = '';
 
-            const totalSteps = numBars * 2; // 2 steps per bar
+            const totalSteps = numBars * 2;
 
             for (let step = 0; step < totalSteps; step++) {
                 if (step % 2 === 0) {
@@ -606,39 +581,27 @@
                 }
 
                 const tokenStr = predictNextToken();
-                const tokenNotes = tokenStr.split('-').map(n => parseInt(n));
+                let tokenNotes = tokenStr.split('-').map(n => parseInt(n));
 
-                // Advance Markov internal state during generation stream
-                trainMarkovToken(tokenNotes);
+                // Hard clamp notes to configured octave ranges
+                let chordNotes = tokenNotes.map(n => clampMidiPitch((n % 12) + (chordOct + 1) * 12, 36, 80));
+                let melodyPitch = clampMidiPitch((chordNotes[chordNotes.length - 1] % 12) + (melOct + 1) * 12, 48, 84);
+
+                trainMarkovToken(chordNotes);
 
                 if (accompanyMode === 'chords_only') {
-                    const chordNotes = tokenNotes.length > 1 ? tokenNotes : [tokenNotes[0], tokenNotes[0] + 4, tokenNotes[0] + 7];
                     generatedSequence.push({ type: 'chord', notes: chordNotes, step });
                     renderTag(chordNotes, true, true, step);
                 } 
                 else if (accompanyMode === 'melody_only') {
-                    const melodyNote = [tokenNotes[0]];
-                    generatedSequence.push({ type: 'melody', notes: melodyNote, step });
-                    renderTag(melodyNote, true, false, step);
+                    generatedSequence.push({ type: 'melody', notes: [melodyPitch], step });
+                    renderTag([melodyPitch], true, false, step);
                 } 
                 else if (accompanyMode === 'chords_melody') {
-                    const chordNotes = tokenNotes.length > 1 ? tokenNotes : [tokenNotes[0], tokenNotes[0] + 4, tokenNotes[0] + 7];
-                    const melodyNote = [chordNotes[chordNotes.length - 1] + 12]; // Lead voice top note
                     generatedSequence.push({ type: 'chord', notes: chordNotes, step });
-                    generatedSequence.push({ type: 'melody', notes: melodyNote, step });
-
+                    generatedSequence.push({ type: 'melody', notes: [melodyPitch], step });
                     renderTag(chordNotes, true, true, step);
-                    renderTag(melodyNote, true, false, step);
-                } 
-                else if (accompanyMode === 'melody_chords') {
-                    const melodyNote = [tokenNotes[0]];
-                    const root = tokenNotes[0] - 12;
-                    const chordNotes = [root, root + 4, root + 7];
-                    generatedSequence.push({ type: 'melody', notes: melodyNote, step });
-                    generatedSequence.push({ type: 'chord', notes: chordNotes, step });
-
-                    renderTag(melodyNote, true, false, step);
-                    renderTag(chordNotes, true, true, step);
+                    renderTag([melodyPitch], true, false, step);
                 }
             }
 
@@ -660,6 +623,7 @@
             streamLogEl.appendChild(tag);
         }
 
+        // Web Audio Asynchronous Scheduler (Prevents Browser Freezing)
         function togglePlayPreview() {
             if (isPreviewPlaying) {
                 stopPlayback();
@@ -671,46 +635,67 @@
                 return;
             }
 
+            ensureAudioContext();
             isPreviewPlaying = true;
             document.getElementById('playPreviewBtn').classList.add('playing');
             document.getElementById('playPreviewBtn').innerText = "■ Stop Preview";
 
             const bpm = parseInt(document.getElementById('bpm').value);
-            const stepDurationMs = (60 / bpm) * 2 * 1000;
+            const stepSec = (60 / bpm);
+            const startTime = audioCtx.currentTime + 0.05;
+
             const maxStep = Math.max(...generatedSequence.map(s => s.step));
 
             for (let step = 0; step <= maxStep; step++) {
                 const stepItems = generatedSequence.filter(s => s.step === step);
-                
+                const stepTime = startTime + (step * stepSec);
+
+                // Audio Event Scheduling
+                stepItems.forEach(item => {
+                    item.notes.forEach(midi => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = "triangle";
+                        osc.frequency.setValueAtTime(midiToFreq(midi), stepTime);
+
+                        const vol = item.type === 'chord' ? 0.12 : 0.22;
+                        const dur = item.type === 'chord' ? stepSec * 0.9 : stepSec * 0.5;
+
+                        gain.gain.setValueAtTime(0, stepTime);
+                        gain.gain.linearRampToValueAtTime(vol, stepTime + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, stepTime + dur);
+
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(stepTime);
+                        osc.stop(stepTime + dur);
+                    });
+                });
+
+                // UI Highlight Scheduling
+                const delayMs = (stepTime - audioCtx.currentTime) * 1000;
                 const timer = setTimeout(() => {
                     if (!isPreviewPlaying) return;
-
                     document.querySelectorAll('.note-tag').forEach(t => t.classList.remove('active-playing'));
                     document.querySelectorAll(`[data-step="${step}"]`).forEach(t => t.classList.add('active-playing'));
+                }, Math.max(0, delayMs));
 
-                    stepItems.forEach(item => {
-                        synthPlayNotes(item.notes, item.type === 'chord' ? 0.8 : 0.4, item.type === 'chord' ? 0.15 : 0.25);
-                    });
-
-                    if (step === maxStep) {
-                        setTimeout(stopPlayback, stepDurationMs);
-                    }
-                }, step * stepDurationMs);
-
-                playTimers.push(timer);
+                playTimeouts.push(timer);
             }
+
+            const totalDurationMs = ((maxStep + 1) * stepSec) * 1000;
+            const stopTimer = setTimeout(stopPlayback, totalDurationMs);
+            playTimeouts.push(stopTimer);
         }
 
         function stopPlayback() {
             isPreviewPlaying = false;
-            playTimers.forEach(t => clearTimeout(t));
-            playTimers = [];
+            playTimeouts.forEach(t => clearTimeout(t));
+            playTimeouts = [];
             document.getElementById('playPreviewBtn').classList.remove('playing');
             document.getElementById('playPreviewBtn').innerText = "▶ Play Preview";
             document.querySelectorAll('.note-tag').forEach(t => t.classList.remove('active-playing'));
         }
-
-        document.getElementById('addManualBtn').addEventListener('click', parseInputChords);
 
         function updateMatrixUI() {
             const states = Object.keys(markovChain);
@@ -749,141 +734,8 @@
             return midiToNoteName(parseInt(tokenStr));
         }
 
-        function writeVarLen(val) {
-            let buffer = val & 0x7F;
-            const bytes = [];
-            while ((val >>= 7)) {
-                buffer <<= 8;
-                buffer |= (val & 0x7F) | 0x80;
-            }
-            while (true) {
-                bytes.push(buffer & 0xFF);
-                if (buffer & 0x80) buffer >>= 8;
-                else break;
-            }
-            return bytes;
-        }
-
-        document.getElementById('exportMidiBtn').addEventListener('click', () => {
-            if (generatedSequence.length === 0) {
-                alert("No sequence generated to export. Click 'Generate AI Bars' first.");
-                return;
-            }
-
-            const bpm = parseInt(document.getElementById('bpm').value);
-            const microsecondsPerQuarter = Math.round(60000000 / bpm);
-
-            const track1Events = [
-                0x00, 0xFF, 0x51, 0x03, 
-                (microsecondsPerQuarter >> 16) & 0xFF, 
-                (microsecondsPerQuarter >> 8) & 0xFF, 
-                microsecondsPerQuarter & 0xFF,
-                0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08,
-                0x00, 0xFF, 0x2F, 0x00
-            ];
-
-            let track2Events = [
-                0x00, 0xFF, 0x03, 0x09, ...Array.from("Markov AI").map(c => c.charCodeAt(0))
-            ];
-
-            const sortedItems = [...generatedSequence].sort((a,b) => a.step - b.step);
-            let currentTick = 0;
-
-            sortedItems.forEach(item => {
-                const targetTick = item.step * 192;
-                let deltaTicks = targetTick - currentTick;
-                currentTick = targetTick;
-
-                const deltaBytes = writeVarLen(deltaTicks);
-                const channel = item.type === 'chord' ? 0x01 : 0x00;
-
-                item.notes.forEach((note, idx) => {
-                    const d = idx === 0 ? deltaBytes : [0x00];
-                    track2Events.push(...d, 0x90 | channel, note, 0x64);
-                });
-
-                const durationDelta = writeVarLen(192);
-                item.notes.forEach((note, idx) => {
-                    const d = idx === 0 ? durationDelta : [0x00];
-                    track2Events.push(...d, 0x80 | channel, note, 0x00);
-                });
-
-                currentTick += 192;
-            });
-
-            track2Events.push(0x00, 0xFF, 0x2F, 0x00);
-
-            function buildChunk(type, events) {
-                const len = events.length;
-                return [
-                    ...type.split('').map(c => c.charCodeAt(0)),
-                    (len >> 24) & 0xFF, (len >> 16) & 0xFF, (len >> 8) & 0xFF, len & 0xFF,
-                    ...events
-                ];
-            }
-
-            const headerChunk = [
-                0x4D, 0x54, 0x68, 0x64,
-                0x00, 0x00, 0x00, 0x06,
-                0x00, 0x01,
-                0x00, 0x02,
-                0x00, 0x60
-            ];
-
-            const fullFile = new Uint8Array([
-                ...headerChunk,
-                ...buildChunk("MTrk", track1Events),
-                ...buildChunk("MTrk", track2Events)
-            ]);
-
-            const blob = new Blob([fullFile], { type: "audio/midi" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `markov_harmonic_sequence_${bpm}bpm.mid`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        });
-
-        // Universal File Loader
-        const fileInput = document.getElementById('fileInput');
-        document.getElementById('uploadFileBtn').addEventListener('click', () => fileInput.click());
-
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const content = event.target.result;
-                if (file.name.endsWith('.json')) {
-                    try {
-                        markovChain = JSON.parse(content);
-                        updateMatrixUI();
-                        statusBadgeEl.innerText = "Model JSON Loaded";
-                    } catch(err) { alert("Invalid JSON file."); }
-                } else {
-                    const chordMatches = content.match(/([A-Ga-g][#b]?(?:maj9|maj7|m7b5|m7|m6|dim7|dim|aug|min|m|9|7|6|sus2|sus4)?)/gi);
-                    if (chordMatches) {
-                        playedHistory = [];
-                        parsedChordBank = [];
-                        chordMatches.forEach(ch => {
-                            const parsed = parseChordSymbolToMidi(ch);
-                            if (parsed) {
-                                parsedChordBank.push(parsed.midiNotes);
-                                trainMarkovToken(parsed.midiNotes);
-                            }
-                        });
-                        updateMatrixUI();
-                        statusBadgeEl.innerText = "Chords Parsed from File";
-                    }
-                }
-            };
-            reader.readAsText(file);
-        });
-
         // Event Listeners
+        document.getElementById('addManualBtn').addEventListener('click', parseInputChords);
         document.getElementById('inputTarget').addEventListener('change', updateAccompanimentOptions);
         document.getElementById('generateBtn').addEventListener('click', generateAISequence);
         document.getElementById('playPreviewBtn').addEventListener('click', togglePlayPreview);
@@ -904,16 +756,6 @@
             streamLogEl.innerHTML = '<span style="color: var(--text-dim); font-size: 0.8rem;">Model cleared. Enter chords or upload files...</span>';
             matrixTableEl.innerHTML = '<tbody><tr><td colspan="2" style="color: var(--text-dim);">Matrix empty.</td></tr></tbody>';
             statusBadgeEl.innerText = "Model Reset";
-        });
-
-        document.getElementById('saveJsonBtn').addEventListener('click', () => {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(markovChain, null, 2));
-            const a = document.createElement('a');
-            a.href = dataStr;
-            a.download = "markov_harmonic_model.json";
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
         });
 
         document.getElementById('bpm').addEventListener('input', (e) => {
