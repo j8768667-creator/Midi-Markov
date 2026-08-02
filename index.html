@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Markov Harmonic Engine v17</title>
+    <title>Markov Harmonic Engine v18</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -95,7 +95,7 @@
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v17</h1>
+        <h1>HARMONIC MARKOV ENGINE v18</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -427,10 +427,8 @@
                     const leadIndex = validPitches.indexOf(leadPitch);
                     let noteStack = [leadPitch];
 
-                    // Determine voice counts based on manual setting or AI dynamic rules
                     let targetVoices = 1;
                     if (voiceMode === 'dynamic') {
-                        // AI Dynamic: Complex chords (7ths/diminished) get 3-4 voices, major/minor get 2 voices
                         targetVoices = chord.intervals.length >= 4 ? 3 : (b % 2 === 0 ? 2 : 1);
                     } else {
                         targetVoices = parseInt(voiceMode);
@@ -464,64 +462,80 @@
             document.getElementById('statusBadge').innerText = `Generated ${numBars} Bars`;
         }
 
-        // Fixed Robust MIDI Exporter
+        // Guaranteed Reliable MIDI File Downloader Builder
         document.getElementById('exportMidiBtn').addEventListener('click', () => {
-            if (generatedSequence.length === 0) return alert("Generate sequence first.");
+            if (generatedSequence.length === 0) return alert("Generate a sequence first.");
+            
             const bpm = parseInt(document.getElementById('bpm').value);
             const numBars = parseInt(document.getElementById('numBars').value);
-            const ticksPerStep = 96;
-            const totalSongTicks = numBars * 8 * ticksPerStep;
+            const ticksPerQuarter = 96;
+            const totalSongTicks = numBars * 8 * ticksPerQuarter;
             const mpqn = Math.round(60000000 / bpm);
 
             function writeVarLen(val) {
+                if (val === 0) return [0x00];
                 let buffer = val & 0x7F, bytes = [];
                 while ((val >>= 7)) { buffer <<= 8; buffer |= (val & 0x7F) | 0x80; }
                 while (true) { bytes.push(buffer & 0xFF); if (buffer & 0x80) buffer >>= 8; else break; }
                 return bytes;
             }
 
-            function buildTrack(itemType, chan) {
-                let events = [0x00, 0xFF, 0x03, 0x04, 0x54, 0x52, 0x4B, 0x31];
+            function buildTrackData(itemType, chan) {
+                let events = [];
+                // Track name meta event
+                events.push(0x00, 0xFF, 0x03, 0x04, itemType === 'chord' ? 0x42 : 0x4C, 0x65, 0x61, 0x64);
+                
                 let currentTick = 0;
                 const items = generatedSequence.filter(s => s.type === itemType);
 
                 items.forEach(item => {
-                    const startTick = item.step * ticksPerStep;
-                    const durTicks = Math.max(1, Math.round(item.durationSteps * ticksPerStep * 0.92));
+                    const startTick = item.step * ticksPerQuarter;
+                    const durTicks = Math.max(1, Math.round(item.durationSteps * ticksPerQuarter * 0.92));
                     const deltaON = startTick - currentTick;
 
+                    // Note On
                     item.notes.forEach((n, idx) => {
                         events.push(...(idx === 0 ? writeVarLen(deltaON) : [0x00]), 0x90 | chan, n, 85);
                     });
+
+                    // Note Off
                     item.notes.forEach((n, idx) => {
                         events.push(...(idx === 0 ? writeVarLen(durTicks) : [0x00]), 0x80 | chan, n, 0x00);
                     });
+
                     currentTick = startTick + durTicks;
                 });
 
-                if (currentTick < totalSongTicks) {
-                    events.push(...writeVarLen(totalSongTicks - currentTick), 0xFF, 0x2F, 0x00);
-                } else {
-                    events.push(0x00, 0xFF, 0x2F, 0x00);
-                }
-                const len = events.length;
-                return [0x4D, 0x54, 0x72, 0x6B, (len>>24)&0xFF, (len>>16)&0xFF, (len>>8)&0xFF, len&0xFF, ...events];
+                // End of Track meta event
+                const finalDelta = Math.max(0, totalSongTicks - currentTick);
+                events.push(...writeVarLen(finalDelta), 0xFF, 0x2F, 0x00);
+
+                return events;
             }
 
             const header = [0x4D, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, 0x00, 0x03, 0x00, 0xC0];
-            const metaTrack = [0x4D, 0x54, 0x72, 0x6B, 0x00, 0x00, 0x00, 0x0B, 0x00, 0xFF, 0x51, 0x03, (mpqn>>16)&0xFF, (mpqn>>8)&0xFF, mpqn&0xFF, 0x00, 0xFF, 0x2F, 0x00];
+            
+            // Meta track for tempo
+            const metaEvents = [0x00, 0xFF, 0x51, 0x03, (mpqn>>16)&0xFF, (mpqn>>8)&0xFF, mpqn&0xFF, 0x00, 0xFF, 0x2F, 0x00];
+            const metaTrackChunk = [0x4D, 0x54, 0x72, 0x6B, (metaEvents.length>>24)&0xFF, (metaEvents.length>>16)&0xFF, (metaEvents.length>>8)&0xFF, metaEvents.length&0xFF, ...metaEvents];
+
+            const track1Events = buildTrackData('chord', 0);
+            const track1Chunk = [0x4D, 0x54, 0x72, 0x6B, (track1Events.length>>24)&0xFF, (track1Events.length>>16)&0xFF, (track1Events.length>>8)&0xFF, track1Events.length&0xFF, ...track1Events];
+
+            const track2Events = buildTrackData('melody', 1);
+            const track2Chunk = [0x4D, 0x54, 0x72, 0x6B, (track2Events.length>>24)&0xFF, (track2Events.length>>16)&0xFF, (track2Events.length>>8)&0xFF, track2Events.length&0xFF, ...track2Events];
 
             const fileBytes = new Uint8Array([
                 ...header,
-                ...metaTrack,
-                ...buildTrack('chord', 0),
-                ...buildTrack('melody', 1)
+                ...metaTrackChunk,
+                ...track1Chunk,
+                ...track2Chunk
             ]);
 
             const blob = new Blob([fileBytes], { type: "audio/midi" });
             const link = document.createElement('a');
-            link.href = window.URL.createObjectURL(blob);
-            link.download = `markov_v17_output.mid`;
+            link.href = URL.createObjectURL(blob);
+            link.download = `markov_v18_${numBars}bars.mid`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
