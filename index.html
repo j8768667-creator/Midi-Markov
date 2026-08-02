@@ -426,6 +426,7 @@
         }
 
         const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+        const MAJOR_SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11];
 
         const CHORD_FORMULAS = {
             "": [0, 4, 7], "M": [0, 4, 7], "MAJ": [0, 4, 7],
@@ -603,6 +604,18 @@
             return weightedChoices[Math.floor(Math.random() * weightedChoices.length)];
         }
 
+        // Full Scale Generator for Smooth Melodies
+        function getScalePitches(rootMidi, octave) {
+            const baseRoot = (rootMidi % 12) + (octave + 1) * 12;
+            const pitches = [];
+            for (let oct = -1; oct <= 1; oct++) {
+                MAJOR_SCALE_INTERVALS.forEach(interval => {
+                    pitches.push(clampMidiPitch(baseRoot + interval + (oct * 12), 52, 88));
+                });
+            }
+            return Array.from(new Set(pitches)).sort((a, b) => a - b);
+        }
+
         function generateAISequence() {
             if (Object.keys(markovChain).length === 0 && parsedChordBank.length === 0) {
                 parseInputChords();
@@ -612,7 +625,7 @@
             const accompanyMode = accompanyModeSelect.value;
             const chordOct = parseInt(document.getElementById('chordOctave').value);
             const melOct = parseInt(document.getElementById('melodyOctave').value);
-            const chordStepDuration = parseInt(document.getElementById('chordDuration').value); // 8 steps = 1 bar
+            const chordStepDuration = parseInt(document.getElementById('chordDuration').value); 
             const humanizeVal = parseInt(document.getElementById('humanizeAmount').value) / 100;
 
             generatedSequence = [];
@@ -623,7 +636,7 @@
             let lastTokenStr = null;
             let lastMelodyPitch = null;
 
-            // Step 1: Generate Chords Pass
+            // Step 1: Generate Sustained Chords
             for (let step = 0; step < totalSteps; step += chordStepDuration) {
                 const barNum = Math.floor(step / stepsPerBar) + 1;
                 
@@ -659,29 +672,41 @@
                 }
             }
 
-            // Step 2: Generate Legato Melody Pass
+            // Step 2: Generate Flowing Diatonic Melody
             if (accompanyMode === 'melody_only' || accompanyMode === 'chords_melody' || accompanyMode === 'melody_chords') {
                 let melStep = 0;
+
                 while (melStep < totalSteps) {
-                    const durChoices = [2, 2, 3, 4]; // Quarter, Dotted, Half note durations
+                    const durChoices = [2, 2, 3, 4]; // Quarter, Dotted Quarter, Half Notes
                     const noteDurSteps = durChoices[Math.floor(Math.random() * durChoices.length)];
 
                     const activeChordObj = generatedSequence.find(s => s.type === 'chord' && melStep >= s.step && melStep < (s.step + s.durationSteps));
-                    const currentChordNotes = activeChordObj ? activeChordObj.notes : [60, 64, 67];
-
-                    let candidatePitches = [];
-                    currentChordNotes.forEach(cn => {
-                        const basePitch = (cn % 12) + (melOct + 1) * 12;
-                        candidatePitches.push(clampMidiPitch(basePitch, 52, 84));
-                        candidatePitches.push(clampMidiPitch(basePitch + 2, 52, 84));
-                    });
+                    const currentChordRoot = activeChordObj ? activeChordObj.notes[0] : 60;
+                    
+                    const scalePitches = getScalePitches(currentChordRoot, melOct);
 
                     let selectedMelodyPitch;
                     if (lastMelodyPitch !== null) {
-                        candidatePitches.sort((a, b) => Math.abs(a - lastMelodyPitch) - Math.abs(b - lastMelodyPitch));
-                        selectedMelodyPitch = Math.random() < 0.85 ? candidatePitches[0] : candidatePitches[Math.floor(Math.random() * candidatePitches.length)];
+                        // Find closest step-wise pitch
+                        const closestIndex = scalePitches.reduce((bestIdx, currPitch, idx) => {
+                            return Math.abs(currPitch - lastMelodyPitch) < Math.abs(scalePitches[bestIdx] - lastMelodyPitch) ? idx : bestIdx;
+                        }, 0);
+
+                        // Movement bias: Step +1, -1, or hold (small intervals)
+                        const stepOffsets = [-2, -1, -1, 0, 1, 1, 2];
+                        const chosenOffset = stepOffsets[Math.floor(Math.random() * stepOffsets.length)];
+                        const targetIdx = Math.max(0, Math.min(scalePitches.length - 1, closestIndex + chosenOffset));
+                        
+                        selectedMelodyPitch = scalePitches[targetIdx];
+
+                        // Prevent 3x repeat of identical note
+                        if (selectedMelodyPitch === lastMelodyPitch && Math.random() < 0.7) {
+                            const shift = Math.random() < 0.5 ? 1 : -1;
+                            const adjustedIdx = Math.max(0, Math.min(scalePitches.length - 1, targetIdx + shift));
+                            selectedMelodyPitch = scalePitches[adjustedIdx];
+                        }
                     } else {
-                        selectedMelodyPitch = candidatePitches[Math.floor(Math.random() * candidatePitches.length)];
+                        selectedMelodyPitch = scalePitches[Math.floor(Math.random() * scalePitches.length)];
                     }
 
                     lastMelodyPitch = selectedMelodyPitch;
@@ -721,7 +746,7 @@
             streamLogEl.appendChild(tag);
         }
 
-        // Reliable Web Audio Synthesizer Preview
+        // Web Audio Synthesizer Preview
         async function togglePlayPreview() {
             if (isPreviewPlaying) {
                 stopPlayback();
@@ -739,7 +764,7 @@
             document.getElementById('playPreviewBtn').innerText = "■ Stop Preview";
 
             const bpm = parseInt(document.getElementById('bpm').value);
-            const stepSec = (60 / bpm) / 2; // Eighth note resolution
+            const stepSec = (60 / bpm) / 2; 
             const startTime = audioCtx.currentTime + 0.1;
 
             const maxStep = Math.max(...generatedSequence.map(s => s.step + s.durationSteps));
