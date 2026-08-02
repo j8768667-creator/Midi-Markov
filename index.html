@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Harmonic Markov Engine v25</title>
+    <title>Harmonic Markov Engine v26</title>
     <style>
         :root {
             --bg-dark: #0f1115;
@@ -62,14 +62,14 @@
 
         .chord-settings-grid {
             display: flex; flex-direction: column; gap: 8px;
-            max-height: 240px; overflow-y: auto; background: #0b0d10;
+            max-height: 280px; overflow-y: auto; background: #0b0d10;
             padding: 8px; border-radius: 8px; border: 1px solid var(--border);
         }
         .chord-settings-row {
             display: flex; justify-content: space-between; align-items: center; gap: 6px;
             background: #181b20; padding: 8px 10px; border-radius: 6px; border: 1px solid #2a2e38;
         }
-        .chord-name-lbl { font-weight: bold; color: var(--accent-orange); font-size: 0.85rem; min-width: 80px; }
+        .chord-name-lbl { font-weight: bold; color: var(--accent-orange); font-size: 0.82rem; min-width: 90px; }
         .chord-controls-group { display: flex; gap: 6px; flex: 1; justify-content: flex-end; }
 
         .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -84,7 +84,7 @@
         button.success { background: #00b894; color: #fff; border: none; }
 
         .stream-log {
-            min-height: 250px; max-height: 580px; background: #08090b; border: 1px solid var(--border);
+            min-height: 300px; max-height: 700px; background: #08090b; border: 1px solid var(--border);
             border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.85rem;
             color: var(--accent-cyan); overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
         }
@@ -113,7 +113,7 @@
 <body>
 
     <header>
-        <h1>HARMONIC MARKOV ENGINE v25</h1>
+        <h1>HARMONIC MARKOV ENGINE v26</h1>
         <span class="badge" id="statusBadge">Ready</span>
     </header>
 
@@ -128,7 +128,7 @@
                 <input type="file" id="midiImportInput" accept=".mid,.midi">
             </div>
 
-            <h2>2. Per-Chord Voice & Purple Box Settings</h2>
+            <h2>2. Per-Bar Voice & Purple Box Settings</h2>
             <div class="chord-settings-grid" id="chordSettingsEditor"></div>
 
             <h2>3. Harmonic Accompaniment Options</h2>
@@ -160,7 +160,8 @@
                     <option value="syncopated">Syncopated Groove (Off-beat skips)</option>
                     <option value="driving">Driving 8th Notes (Motoric Pitch Steps)</option>
                     <option value="virtuoso">Virtuoso 16th Runs (Fast Scale Sweeps)</option>
-                    <option value="ambient" selected>Ambient Half-Notes (Wide Holds)</option>
+                    <option value="ambientSustained" selected>Ambient Sustained (Long Tones)</option>
+                    <option value="pentatonicDrift">Pentatonic Drift (Floating Leads)</option>
                     <option value="sparse">Sparse & Minimalist (Long Rest Pauses)</option>
                 </select>
             </div>
@@ -223,7 +224,7 @@
         let activeNodes = [];
         let generatedSequence = [];
         let parsedChords = [];
-        let perChordCustomSettings = {};
+        let perBarCustomSettings = {};
         let isPreviewPlaying = false;
         let lastBase64Midi = "";
 
@@ -269,23 +270,29 @@
         function updateChordSettingsEditor() {
             const raw = document.getElementById('manualTextInput').value;
             parsedChords = raw.split(',').map(parseChordSymbol).filter(Boolean);
+            const numBars = parseInt(document.getElementById('numBars').value) || 8;
             const editorEl = document.getElementById('chordSettingsEditor');
             editorEl.innerHTML = '';
 
-            parsedChords.forEach((chord, idx) => {
-                if (!perChordCustomSettings[idx]) {
-                    perChordCustomSettings[idx] = { voices: 'auto', boxes: '4' };
+            if (parsedChords.length === 0) return;
+
+            for (let b = 0; b < numBars; b++) {
+                const chordIdx = b % parsedChords.length;
+                const chord = parsedChords[chordIdx];
+
+                if (!perBarCustomSettings[b]) {
+                    perBarCustomSettings[b] = { voices: 'auto', boxes: '4' };
                 }
 
-                const currentVoices = perChordCustomSettings[idx].voices;
-                const currentBoxes = perChordCustomSettings[idx].boxes;
+                const currentVoices = perBarCustomSettings[b].voices;
+                const currentBoxes = perBarCustomSettings[b].boxes;
 
                 const row = document.createElement('div');
                 row.className = 'chord-settings-row';
                 row.innerHTML = `
-                    <span class="chord-name-lbl">Bar ${idx + 1}: ${chord.name}</span>
+                    <span class="chord-name-lbl">Bar ${b + 1}: ${chord.name}</span>
                     <div class="chord-controls-group">
-                        <select id="boxes-sel-${idx}" title="Purple Lead Boxes">
+                        <select id="boxes-sel-${b}" title="Purple Lead Boxes">
                             <option value="1" ${currentBoxes === '1' ? 'selected' : ''}>1 Box</option>
                             <option value="2" ${currentBoxes === '2' ? 'selected' : ''}>2 Boxes</option>
                             <option value="3" ${currentBoxes === '3' ? 'selected' : ''}>3 Boxes</option>
@@ -293,7 +300,7 @@
                             <option value="6" ${currentBoxes === '6' ? 'selected' : ''}>6 Boxes</option>
                             <option value="8" ${currentBoxes === '8' ? 'selected' : ''}>8 Boxes</option>
                         </select>
-                        <select id="voice-sel-${idx}" title="Voice Count per Box">
+                        <select id="voice-sel-${b}" title="Voice Count per Box">
                             <option value="auto" ${currentVoices === 'auto' ? 'selected' : ''}>Auto Voice</option>
                             <option value="1" ${currentVoices === '1' ? 'selected' : ''}>1 Voice</option>
                             <option value="2" ${currentVoices === '2' ? 'selected' : ''}>2 Voices</option>
@@ -304,16 +311,17 @@
                 `;
                 editorEl.appendChild(row);
 
-                row.querySelector(`#boxes-sel-${idx}`).addEventListener('change', (e) => {
-                    perChordCustomSettings[idx].boxes = e.target.value;
+                row.querySelector(`#boxes-sel-${b}`).addEventListener('change', (e) => {
+                    perBarCustomSettings[b].boxes = e.target.value;
                 });
-                row.querySelector(`#voice-sel-${idx}`).addEventListener('change', (e) => {
-                    perChordCustomSettings[idx].voices = e.target.value;
+                row.querySelector(`#voice-sel-${b}`).addEventListener('change', (e) => {
+                    perBarCustomSettings[b].voices = e.target.value;
                 });
-            });
+            }
         }
 
         document.getElementById('manualTextInput').addEventListener('input', updateChordSettingsEditor);
+        document.getElementById('numBars').addEventListener('change', updateChordSettingsEditor);
         updateChordSettingsEditor();
 
         // MIDI IMPORT PARSER
@@ -431,7 +439,7 @@
             return Array.from(new Set(detectedChords)).slice(0, 32);
         }
 
-        // GENERATION ENGINE WITH VOICE HARMONY AND BOUNDS PROTECTION
+        // GENERATION ENGINE WITH FULL BAR VISIBILITY AND SECURE MELODY ALGORITHMS
         function generateAISequence() {
             if (isPreviewPlaying) stopPreview();
             if (parsedChords.length === 0) return alert("Please enter valid chords.");
@@ -456,14 +464,12 @@
                 const chord = parsedChords[chordIdx];
                 const barStartStep = b * 8;
 
-                let contentEl = null;
-                if (numBars <= 16) {
-                    const barBox = document.createElement('div');
-                    barBox.className = 'bar-container';
-                    barBox.innerHTML = `<div class="bar-title">BAR ${b + 1}: ${chord.name}</div><div class="bar-content" id="bar-${b}"></div>`;
-                    streamLog.appendChild(barBox);
-                    contentEl = document.getElementById(`bar-${b}`);
-                }
+                // RENDER BAR CONTAINERS FOR ALL NUMBERS (INCLUDING 32 BARS)
+                const barBox = document.createElement('div');
+                barBox.className = 'bar-container';
+                barBox.innerHTML = `<div class="bar-title">BAR ${b + 1}: ${chord.name}</div><div class="bar-content" id="bar-${b}"></div>`;
+                streamLog.appendChild(barBox);
+                const contentEl = document.getElementById(`bar-${b}`);
 
                 // 1. HARMONIC ACCOMPANIMENT PATTERNS
                 const rootMidi = (chordOct + 1) * 12 + chord.rootIdx;
@@ -508,8 +514,8 @@
                     contentEl.appendChild(chordTag);
                 }
 
-                // 2. SAFE MELODY GENERATOR ALGORITHMS
-                const chordCustom = perChordCustomSettings[chordIdx] || { voices: 'auto', boxes: '4' };
+                // 2. MELODY GENERATOR ALGORITHMS
+                const chordCustom = perBarCustomSettings[b] || { voices: 'auto', boxes: '4' };
                 const boxCount = Math.max(1, parseInt(chordCustom.boxes) || 4);
                 let targetVoices = chordCustom.voices === 'auto' ? (chord.intervals.length >= 4 ? 3 : (b % 2 === 0 ? 2 : 1)) : parseInt(chordCustom.voices);
 
@@ -529,16 +535,18 @@
                     } else if (melodyStyle === 'virtuoso') {
                         const sweepIdx = (i * 2) % pitchCount;
                         leadPitch = validPitches[sweepIdx];
-                    } else if (melodyStyle === 'ambient') {
-                        const ambientIdx = (i * 3) % pitchCount;
+                    } else if (melodyStyle === 'ambientSustained') {
+                        const ambientIdx = Math.floor((i * 2) % pitchCount);
                         leadPitch = validPitches[ambientIdx] || validPitches[0];
+                    } else if (melodyStyle === 'pentatonicDrift') {
+                        const driftStep = (i * 3) % pitchCount;
+                        leadPitch = validPitches[driftStep] || validPitches[0];
                     } else {
                         const sortedByProximity = [...validPitches].sort((a, b) => Math.abs(a - lastLeadPitch) - Math.abs(b - lastLeadPitch));
                         leadPitch = sortedByProximity[Math.floor(Math.random() * Math.min(3, sortedByProximity.length))] || validPitches[0];
                     }
                     lastLeadPitch = leadPitch;
 
-                    // BULLETPROOF VOICE STACK COMPUTATION (No negative indices or freezes)
                     let leadIndex = validPitches.indexOf(leadPitch);
                     if (leadIndex < 0) leadIndex = 0;
                     
@@ -558,7 +566,7 @@
                     }
 
                     let durationFactor = 0.9;
-                    if (melodyStyle === 'ambient') durationFactor = 1.9;
+                    if (melodyStyle === 'ambientSustained') durationFactor = 1.85;
                     else if (melodyStyle === 'virtuoso') durationFactor = 0.45;
 
                     generatedSequence.push({ type: 'melody', notes: noteStack, step: stepPos, durationSteps: stepInterval * durationFactor });
@@ -637,7 +645,7 @@
 
             const a = document.createElement('a');
             a.href = dataUri;
-            a.download = `markov_v25_${numBars}bars.mid`;
+            a.download = `markov_v26_${numBars}bars.mid`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -645,7 +653,7 @@
             const fallbackContainer = document.getElementById('midiFallbackContainer');
             const fallbackLink = document.getElementById('directDownloadLink');
             fallbackLink.href = dataUri;
-            fallbackLink.download = `markov_v25_${numBars}bars.mid`;
+            fallbackLink.download = `markov_v26_${numBars}bars.mid`;
             fallbackContainer.style.display = 'block';
         });
 
