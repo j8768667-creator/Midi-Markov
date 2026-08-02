@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Markov Chain Melodic Predictor & Improviser</title>
+    <style>
+        :root {
+            --bg-dark: #0f1115;
+            --panel-bg: #181b20;
+            --accent-cyan: #00e5ff;
+            --accent-purple: #9d4edd;
+            --accent-green: #00ffaa;
+            --text-main: #f0f2f5;
+            --text-dim: #8c96a6;
+            --border: #282c35;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 12px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            letter-spacing: 0.5px;
+            color: var(--accent-cyan);
+        }
+
+        .badge {
+            background: rgba(0, 229, 255, 0.1);
+            color: var(--accent-cyan);
+            border: 1px solid var(--accent-cyan);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+
+        @media (min-width: 850px) {
+            .layout-grid {
+                grid-template-columns: 320px 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .panel h2 {
+            margin: 0;
+            font-size: 1rem;
+            color: var(--accent-green);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Controls */
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        label {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 50%;
+            accent-color: var(--accent-cyan);
+        }
+
+        select {
+            background: #222630;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 6px 10px;
+            border-radius: 6px;
+        }
+
+        .val-disp {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--accent-cyan);
+            width: 45px;
+            text-align: right;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: #222630;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            flex: 1;
+            min-width: 100px;
+        }
+
+        button:active {
+            transform: scale(0.97);
+        }
+
+        button.primary {
+            background: var(--accent-cyan);
+            color: #000;
+            border: none;
+        }
+
+        button.active-ai {
+            background: var(--accent-purple);
+            color: #fff;
+            border: none;
+            box-shadow: 0 0 12px rgba(157, 78, 221, 0.5);
+        }
+
+        button.danger {
+            background: #3a1c24;
+            color: #ff4d6d;
+            border-color: #ff0055;
+        }
+
+        /* Touch Keyboard UI */
+        .keyboard-container {
+            display: flex;
+            position: relative;
+            height: 150px;
+            background: #08090b;
+            border-radius: 8px;
+            overflow-x: auto;
+            padding: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .key {
+            position: relative;
+            flex: 1;
+            min-width: 36px;
+            background: #e6e8ec;
+            border: 1px solid #111;
+            border-radius: 0 0 6px 6px;
+            cursor: pointer;
+            z-index: 1;
+        }
+
+        .key.active {
+            background: var(--accent-cyan) !important;
+        }
+
+        .key.ai-playing {
+            background: var(--accent-purple) !important;
+        }
+
+        .key.black {
+            background: #1a1d24;
+            height: 60%;
+            width: 60%;
+            margin-left: -30%;
+            margin-right: -30%;
+            z-index: 2;
+            border-radius: 0 0 4px 4px;
+        }
+
+        .key-label {
+            position: absolute;
+            bottom: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.65rem;
+            color: #333;
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        .key.black .key-label {
+            color: #aaa;
+        }
+
+        /* Visualizer Matrix */
+        .matrix-container {
+            overflow-x: auto;
+            max-height: 250px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0d0f12;
+            padding: 8px;
+        }
+
+        table.matrix-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+
+        table.matrix-table th, table.matrix-table td {
+            border: 1px solid #222630;
+            padding: 4px;
+            text-align: center;
+        }
+
+        table.matrix-table th {
+            color: var(--text-dim);
+            background: #14171c;
+        }
+
+        .cell-highlight {
+            background: rgba(0, 229, 255, 0.25);
+            color: #fff;
+            font-weight: bold;
+        }
+
+        /* History Stream Log */
+        .stream-log {
+            height: 80px;
+            background: #08090b;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--accent-cyan);
+            overflow-y: auto;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .note-tag {
+            background: #1c222d;
+            border: 1px solid var(--border);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .note-tag.ai {
+            color: var(--accent-purple);
+            border-color: var(--accent-purple);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>MARKOV MELODIC IMPROVISER</h1>
+        <span class="badge" id="statusBadge">Awaiting Input</span>
+    </header>
+
+    <div class="layout-grid">
+        <div class="panel">
+            <h2>Engine Setup</h2>
+
+            <div class="control-row">
+                <label for="bpm">BPM (Tempo)</label>
+                <input type="range" id="bpm" min="40" max="240" value="110">
+                <span class="val-disp" id="bpmVal">110</span>
+            </div>
+
+            <div class="control-row">
+                <label for="order">Markov Chain Order</label>
+                <select id="order">
+                    <option value="1">1st Order (Direct Transition)</option>
+                    <option value="2">2nd Order (Pattern Memory)</option>
+                </select>
+            </div>
+
+            <div class="control-row">
+                <label for="synthType">Synth Waveform</label>
+                <select id="synthType">
+                    <option value="sine">Sine (Smooth)</option>
+                    <option value="triangle" selected>Triangle (Warm)</option>
+                    <option value="sawtooth">Sawtooth (Bright)</option>
+                    <option value="square">Square (8-Bit)</option>
+                </select>
+            </div>
+
+            <div class="control-row">
+                <label for="randomness">Creativity / Chaos</label>
+                <input type="range" id="randomness" min="0" max="100" value="10">
+                <span class="val-disp" id="randomVal">10%</span>
+            </div>
+
+            <div class="btn-group">
+                <button id="aiToggleBtn" class="primary">▶ AI Takeover</button>
+                <button id="clearBtn" class="danger">Clear Data</button>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border); margin: 4px 0;">
+
+            <h2>Save & Export</h2>
+            <div class="btn-group">
+                <button id="saveJsonBtn">Save Model (JSON)</button>
+                <button id="loadJsonBtn">Load Model</button>
+                <input type="file" id="fileInput" accept=".json" style="display:none;">
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Play Melody (Human Input)</h2>
+            <div class="keyboard-container" id="keyboard">
+                </div>
+
+            <h2>Live Stream Sequence</h2>
+            <div class="stream-log" id="streamLog">
+                <span style="color: var(--text-dim); font-size: 0.8rem;">Played notes and AI predictions will stream here...</span>
+            </div>
+
+            <h2>Markov Transition Probability Matrix</h2>
+            <div class="matrix-container">
+                <table class="matrix-table" id="matrixTable">
+                    <thead>
+                        <tr><th>From \ To</th><th>-</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="2" style="color: var(--text-dim);">Matrix empty. Play piano keys to train engine.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Web Audio API Context
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function ensureAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // MIDI Note Utilities
+        const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+        function midiToNoteName(midi) {
+            const name = NOTE_NAMES[midi % 12];
+            const octave = Math.floor(midi / 12) - 1;
+            return `${name}${octave}`;
+        }
+        function midiToFreq(midi) {
+            return 440 * Math.pow(2, (midi - 69) / 12);
+        }
+
+        // Piano Range: C3 (48) to C5 (72)
+        const START_MIDI = 48;
+        const END_MIDI = 72;
+
+        // Markov Model State
+        let markovChain = {}; // e.g., { "60": { "62": 3, "64": 1 } }
+        let playedHistory = [];
+        let isAiPlaying = false;
+        let aiTimer = null;
+
+        // Visual / DOM Elements
+        const keyboardEl = document.getElementById('keyboard');
+        const streamLogEl = document.getElementById('streamLog');
+        const matrixTableEl = document.getElementById('matrixTable');
+        const statusBadgeEl = document.getElementById('statusBadge');
+        const aiToggleBtn = document.getElementById('aiToggleBtn');
+
+        // Synthesizer Audio Generator
+        function playSynthesizerNote(midiNote, isAi = false, durationSec = 0.3) {
+            ensureAudioContext();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            const waveType = document.getElementById('synthType').value;
+            osc.type = waveType;
+            osc.frequency.setValueAtTime(midiToFreq(midiNote), audioCtx.currentTime);
+
+            const attack = 0.02;
+            const decay = durationSec;
+
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + attack);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + attack + decay);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + attack + decay);
+
+            // Highlight key UI
+            const keyEl = document.querySelector(`[data-midi="${midiNote}"]`);
+            if (keyEl) {
+                const activeClass = isAi ? 'ai-playing' : 'active';
+                keyEl.classList.add(activeClass);
+                setTimeout(() => keyEl.classList.remove(activeClass), durationSec * 1000);
+            }
+
+            // Log sequence stream
+            const noteTag = document.createElement('span');
+            noteTag.className = `note-tag ${isAi ? 'ai' : ''}`;
+            noteTag.innerText = midiToNoteName(midiNote);
+            streamLogEl.appendChild(noteTag);
+            streamLogEl.scrollLeft = streamLogEl.scrollWidth;
+        }
+
+        // Markov Chain Training
+        function trainMarkov(midiNote) {
+            playedHistory.push(midiNote);
+
+            const order = parseInt(document.getElementById('order').value);
+            if (playedHistory.length > order) {
+                const state = playedHistory.slice(-(order + 1), -1).join(',');
+                const nextNote = midiNote.toString();
+
+                if (!markovChain[state]) {
+                    markovChain[state] = {};
+                }
+                markovChain[state][nextNote] = (markovChain[state][nextNote] || 0) + 1;
+            }
+
+            updateMatrixUI();
+        }
+
+        // Predict Next Note using Learned Markov Probabilities
+        function predictNextNote() {
+            const order = parseInt(document.getElementById('order').value);
+            const randomnessPct = parseInt(document.getElementById('randomness').value) / 100;
+
+            let currentState = playedHistory.slice(-order).join(',');
+            let possibleNext = markovChain[currentState];
+
+            // If state isn't recognized or random chaos triggers, pick from available learned notes or close pitch
+            if (!possibleNext || Math.random() < randomnessPct) {
+                const keys = Object.keys(markovChain);
+                if (keys.length === 0) return START_MIDI + Math.floor(Math.random() * 12);
+                const randomState = keys[Math.floor(Math.random() * keys.length)];
+                possibleNext = markovChain[randomState];
+            }
+
+            // Weighted probability distribution pick
+            const choices = [];
+            for (const [note, count] of Object.entries(possibleNext)) {
+                for (let i = 0; i < count; i++) {
+                    choices.push(parseInt(note));
+                }
+            }
+
+            if (choices.length === 0) return START_MIDI + 12;
+            return choices[Math.floor(Math.random() * choices.length)];
+        }
+
+        // Build Piano Keyboard UI
+        function buildKeyboard() {
+            keyboardEl.innerHTML = '';
+            for (let midi = START_MIDI; midi <= END_MIDI; midi++) {
+                const noteName = midiToNoteName(midi);
+                const isBlack = noteName.includes('#');
+
+                const key = document.createElement('div');
+                key.className = `key ${isBlack ? 'black' : ''}`;
+                key.dataset.midi = midi;
+
+                const label = document.createElement('span');
+                label.className = 'key-label';
+                label.innerText = isBlack ? '' : noteName;
+                key.appendChild(label);
+
+                // Touch & Click Handlers
+                const handleTrigger = (e) => {
+                    e.preventDefault();
+                    playSynthesizerNote(midi, false, 0.4);
+                    trainMarkov(midi);
+                    statusBadgeEl.innerText = "Learning Pattern...";
+                };
+
+                key.addEventListener('mousedown', handleTrigger);
+                key.addEventListener('touchstart', handleTrigger);
+
+                keyboardEl.appendChild(key);
+            }
+        }
+
+        // Render Matrix Table Data
+        function updateMatrixUI() {
+            const states = Object.keys(markovChain);
+            if (states.length === 0) return;
+
+            // Collect unique target notes
+            const targetNotesSet = new Set();
+            states.forEach(st => {
+                Object.keys(markovChain[st]).forEach(n => targetNotesSet.add(n));
+            });
+            const targetNotes = Array.from(targetNotesSet).sort((a,b) => a - b);
+
+            let tableHTML = '<thead><tr><th>From \\ To</th>';
+            targetNotes.forEach(n => {
+                tableHTML += `<th>${midiToNoteName(parseInt(n))}</th>`;
+            });
+            tableHTML += '</tr></thead><tbody>';
+
+            states.forEach(st => {
+                const stateLabel = st.split(',').map(m => midiToNoteName(parseInt(m))).join(' ');
+                tableHTML += `<tr><th>${stateLabel}</th>`;
+                
+                targetNotes.forEach(n => {
+                    const count = markovChain[st][n] || 0;
+                    const highlight = count > 0 ? 'cell-highlight' : '';
+                    tableHTML += `<td class="${highlight}">${count}</td>`;
+                });
+                tableHTML += '</tr>';
+            });
+
+            tableHTML += '</tbody>';
+            matrixTableEl.innerHTML = tableHTML;
+        }
+
+        // AI Automatic Playback Loop
+        function toggleAiPlay() {
+            isAiPlaying = !isAiPlaying;
+
+            if (isAiPlaying) {
+                if (playedHistory.length === 0) {
+                    // Seed initial note if empty
+                    trainMarkov(60); 
+                }
+
+                aiToggleBtn.classList.add('active-ai');
+                aiToggleBtn.innerText = "■ Stop AI";
+                statusBadgeEl.innerText = "AI Improvising...";
+
+                const step = () => {
+                    if (!isAiPlaying) return;
+                    const nextNote = predictNextNote();
+                    playSynthesizerNote(nextNote, true, 0.35);
+                    trainMarkov(nextNote);
+
+                    const bpm = parseInt(document.getElementById('bpm').value);
+                    const intervalMs = (60 / bpm) * 1000;
+                    aiTimer = setTimeout(step, intervalMs);
+                };
+
+                step();
+            } else {
+                clearTimeout(aiTimer);
+                aiToggleBtn.classList.remove('active-ai');
+                aiToggleBtn.innerText = "▶ AI Takeover";
+                statusBadgeEl.innerText = "Awaiting Input";
+            }
+        }
+
+        // Controls & Settings Listeners
+        document.getElementById('bpm').addEventListener('input', (e) => {
+            document.getElementById('bpmVal').innerText = e.target.value;
+        });
+
+        document.getElementById('randomness').addEventListener('input', (e) => {
+            document.getElementById('randomVal').innerText = e.target.value + '%';
+        });
+
+        aiToggleBtn.addEventListener('click', toggleAiPlay);
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            if (isAiPlaying) toggleAiPlay();
+            markovChain = {};
+            playedHistory = [];
+            streamLogEl.innerHTML = '<span style="color: var(--text-dim); font-size: 0.8rem;">Cleared. Play piano keys to start training...</span>';
+            matrixTableEl.innerHTML = '<tbody><tr><td colspan="2" style="color: var(--text-dim);">Matrix empty.</td></tr></tbody>';
+            statusBadgeEl.innerText = "Data Reset";
+        });
+
+        // Save Engine State JSON (Working Copy / Local File download)
+        document.getElementById('saveJsonBtn').addEventListener('click', () => {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(markovChain, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "markov_melody_model.json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+
+        // Load Engine State JSON
+        const fileInput = document.getElementById('fileInput');
+        document.getElementById('loadJsonBtn').addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    markovChain = JSON.parse(event.target.result);
+                    updateMatrixUI();
+                    statusBadgeEl.innerText = "Model Loaded";
+                } catch(err) {
+                    alert("Invalid JSON file format.");
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Initialize Keyboard Setup
+        buildKeyboard();
+    </script>
+</body>
+</html>
